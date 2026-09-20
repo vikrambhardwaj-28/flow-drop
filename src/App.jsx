@@ -3,7 +3,12 @@ import QRCode from 'qrcode'
 import './App.css'
 
 const CHUNK_SIZE = 64 * 1024
-const TURN_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+const TURN_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    ...(import.meta.env.VITE_TURN_URL ? [{ urls: import.meta.env.VITE_TURN_URL, username: import.meta.env.VITE_TURN_USERNAME, credential: import.meta.env.VITE_TURN_CREDENTIAL }] : []),
+  ],
+}
 const initialTransfers = []
 const SOUND_FREQUENCIES = [1200, 1320, 1440, 1560, 1680, 1800, 1920, 2040, 2160, 2280]
 
