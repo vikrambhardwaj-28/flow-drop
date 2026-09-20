@@ -85,17 +85,27 @@ function App() {
 
   const setupDataChannel = (channel) => {
     channel.binaryType = 'arraybuffer'
-    channel.onopen = () => { setConnected(true); setStatus('Connected directly via WebRTC') }
+    channel.onopen = () => { setConnected(true); setActiveTab('share'); setStatus('Connected directly via WebRTC') }
     channel.onclose = () => { setConnected(false); setStatus('Device disconnected') }
     channel.onmessage = (event) => {
       if (typeof event.data === 'string') {
         const message = JSON.parse(event.data)
         if (message.type === 'clipboard') setClipboard(message.text)
-        if (message.type === 'file-meta') receivingRef.current = { ...message, chunks: [] }
+        if (message.type === 'file-meta') {
+          receivingRef.current = { ...message, chunks: [], received: 0, startedAt: performance.now() }
+          updateTransferProgress({ name: message.name, direction: 'received', percent: 0, eta: 'calculating...', speed: 'starting' })
+        }
         if (message.type === 'file-end') finishReceiving()
         return
       }
-      receivingRef.current?.chunks.push(event.data)
+      if (receivingRef.current) {
+        receivingRef.current.chunks.push(event.data)
+        receivingRef.current.received += event.data.byteLength
+        const elapsed = Math.max((performance.now() - receivingRef.current.startedAt) / 1000, 0.1)
+        const speed = receivingRef.current.received / elapsed
+        const remaining = Math.max(receivingRef.current.size - receivingRef.current.received, 0)
+        updateTransferProgress({ name: receivingRef.current.name, direction: 'received', percent: Math.min(99, Math.round(receivingRef.current.received / receivingRef.current.size * 100)), eta: formatDuration(remaining / speed), speed: `${formatBytes(speed)}/s` })
+      }
     }
     channelRef.current = channel
   }
@@ -110,7 +120,8 @@ function App() {
     link.download = incoming.name
     link.click()
     URL.revokeObjectURL(url)
-    setTransfers((current) => [{ name: incoming.name, size: formatBytes(incoming.size), time: 'Just now', type: extension(incoming.name), direction: 'received' }, ...current])
+    setTransfers((current) => [{ name: incoming.name, size: formatBytes(incoming.size), time: formatClockTime(), type: extension(incoming.name), direction: 'received' }, ...current])
+    updateTransferProgress(null)
     receivingRef.current = null
   }
 
@@ -159,6 +170,7 @@ function App() {
     const code = makeRoomCode()
     setRoomCode(code)
     setSoundWave(useSoundWave)
+    setActiveTab('history')
     setRoomMode('room')
     setStatus(useSoundWave ? 'Broadcasting sound wave beacon...' : 'Creating secure room...')
     connectSocket(code, true)
@@ -170,6 +182,7 @@ function App() {
     const code = joinCode.replace(/\D/g, '').slice(0, 6)
     if (code.length !== 6) return setStatus('Enter a valid 6-digit PIN')
     setRoomCode(code)
+    setActiveTab('history')
     setRoomMode('room')
     setStatus('Joining room securely...')
     connectSocket(code, false)
@@ -236,16 +249,30 @@ function App() {
     if (channelRef.current?.readyState === 'open') channelRef.current.send(JSON.stringify({ type: 'clipboard', text }))
   }
 
+  const updateTransferProgress = (progress) => {
+    setTransfers((current) => [
+      ...(progress ? [{ active: true, progress }] : []),
+      ...current.filter((file) => !file.active),
+    ])
+  }
+
   const sendFile = async (file) => {
     if (!file) return
     if (channelRef.current?.readyState !== 'open') return setStatus('Connect another device before sending')
+    const startedAt = performance.now()
+    updateTransferProgress({ name: file.name, direction: 'sent', percent: 0, eta: 'calculating...', speed: 'starting' })
     channelRef.current.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, mime: file.type }))
     for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
       while (channelRef.current.bufferedAmount > 1024 * 1024) await new Promise((resolve) => window.setTimeout(resolve, 20))
       channelRef.current.send(await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer())
+      const sent = Math.min(offset + CHUNK_SIZE, file.size)
+      const elapsed = Math.max((performance.now() - startedAt) / 1000, 0.1)
+      const speed = sent / elapsed
+      updateTransferProgress({ name: file.name, direction: 'sent', percent: Math.round(sent / file.size * 100), eta: formatDuration((file.size - sent) / speed), speed: `${formatBytes(speed)}/s` })
     }
     channelRef.current.send(JSON.stringify({ type: 'file-end' }))
-    setTransfers((current) => [{ name: file.name, size: formatBytes(file.size), time: 'Just now', type: extension(file.name), direction: 'sent' }, ...current])
+    setTransfers((current) => [{ name: file.name, size: formatBytes(file.size), time: formatClockTime(), type: extension(file.name), direction: 'sent' }, ...current])
+    updateTransferProgress(null)
   }
 
   const handleFiles = (event) => { const file = event.target.files?.[0]; sendFile(file); event.target.value = '' }
@@ -262,11 +289,20 @@ function EntryScreen({ mode, setMode, joinCode, setJoinCode, createRoom, joinRoo
   return <main className={`entry-screen theme-${theme}`}><button className="theme-toggle entry-theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾' : '☀'}</button><div className="entry-brand"><span className="brand-mark">⌁</span> flowdrop</div><div className="entry-card"><span className="eyebrow">PRIVATE PEER-TO-PEER SHARING</span><h1>{mode === 'join' ? 'Join a room' : 'Share without limits.'}</h1><p>{mode === 'join' ? 'Scan the QR code, listen for the nearby beacon, or enter the 6-digit PIN.' : 'Create a secure room. Your files travel directly between devices.'}</p>{mode === 'join' ? <><label htmlFor="room-pin">ROOM PIN</label><input id="room-pin" autoFocus inputMode="numeric" maxLength="6" placeholder="000000" value={joinCode} onChange={(event) => setJoinCode(event.target.value.replace(/\D/g, '').slice(0, 6))} /><button className="entry-button" onClick={joinRoom}>Join room →</button><button className={`listen-button ${listening ? 'listening' : ''}`} onClick={listenForRoom}><span className="mic-icon">{listening ? '◉' : '◌'}</span>{listening ? 'Listening for sound wave...' : 'Listen for sound wave'}</button><button className="link-button" onClick={() => setMode('create')}>Create a new room</button></> : <><button className="entry-button" onClick={() => createRoom(false)}>Create room <span>→</span></button><button className="wave-button" onClick={() => createRoom(true)}><span className="wave-mini">∿</span> Create & emit sound wave</button><button className="link-button" onClick={() => setMode('join')}>I have a room PIN</button></>}<small className="entry-status">{status}</small></div><div className="entry-foot">Encrypted in transit · WebRTC direct · Works on Airtel, Jio, Vi and any network</div></main>
 }
 
-function TransferList({ transfers, onDownload, full = false }) {
-  return <section className={full ? 'history-section full' : 'history-section'}><div className="section-heading"><div><span className="eyebrow">RECENT ACTIVITY</span><h2>Transfer history</h2></div></div><div className="history-table"><div className="table-head"><span>FILE</span><span>SIZE</span><span>TIME</span><span>STATUS</span><span /></div>{transfers.length === 0 && <div className="empty-history">No transfers in this room yet.</div>}{transfers.map((file, index) => <div className="table-row" key={`${file.name}-${index}`}><span className="file-name"><span className={`file-icon ${file.type}`}>{file.type.toUpperCase().slice(0, 3)}</span><strong>{file.name}</strong></span><span>{file.size}</span><span>{file.time}</span><span className="status"><i /> {file.direction === 'received' ? 'Received' : 'Sent'}</span><button className="download-button" onClick={() => onDownload(file)} aria-label={`Download ${file.name}`}>↓</button></div>)}</div></section>
+function TransferList({ transfers, onDownload, full = false, progress }) {
+  const active = transfers.find((file) => file.active)?.progress || progress
+  const completed = transfers.filter((file) => !file.active)
+  return <section className={full ? 'history-section full' : 'history-section'}><TransferProgress progress={active} /><div className="section-heading"><div><span className="eyebrow">RECENT ACTIVITY</span><h2>Transfer history</h2></div></div><div className="history-table"><div className="table-head"><span>FILE</span><span>SIZE</span><span>TIME</span><span>STATUS</span><span /></div>{completed.length === 0 && <div className="empty-history">No transfers in this room yet.</div>}{completed.map((file, index) => <div className="table-row" key={`${file.name}-${index}`}><span className="file-name"><span className={`file-icon ${file.type}`}>{file.type.toUpperCase().slice(0, 3)}</span><strong>{file.name}</strong></span><span>{file.size}</span><span>{file.time}</span><span className="status"><i /> {file.direction === 'received' ? 'Received' : 'Sent'}</span><button className="download-button" onClick={() => onDownload(file)} aria-label={`Download ${file.name}`}>↓</button></div>)}</div></section>
+}
+
+function TransferProgress({ progress }) {
+  if (!progress) return null
+  return <section className="transfer-progress"><div className="progress-top"><div><span className="eyebrow">{progress.direction === 'received' ? 'RECEIVING FILE' : 'SENDING FILE'}</span><strong>{progress.name}</strong></div><b>{progress.percent}%</b></div><div className="progress-track"><i style={{ width: `${progress.percent}%` }} /></div><div className="progress-meta"><span>{progress.speed}</span><span>{progress.eta}</span></div></section>
 }
 
 function extension(name) { return name.split('.').pop()?.toLowerCase() || 'file' }
 function formatBytes(bytes) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB` }
+function formatDuration(seconds) { if (!Number.isFinite(seconds) || seconds <= 0) return 'done'; if (seconds < 60) return `${Math.ceil(seconds)}s left`; return `${Math.floor(seconds / 60)}m ${Math.ceil(seconds % 60)}s left` }
+function formatClockTime() { return new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date()) }
 
 export default App
