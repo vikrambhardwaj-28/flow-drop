@@ -59,6 +59,7 @@ function App() {
   const channelRef = useRef(null)
   const fileInputRef = useRef(null)
   const receivingRef = useRef(null)
+  const pendingCandidatesRef = useRef([])
   const audioRefs = useRef({ context: null, stream: null, frame: null })
 
   useEffect(() => () => {
@@ -71,17 +72,6 @@ function App() {
   }, [])
 
   const sendSignal = (message) => socketRef.current?.send(JSON.stringify(message))
-
-  const waitForIce = (peer, description) => new Promise((resolve) => {
-    if (peer.iceGatheringState === 'complete') return resolve(description)
-    const onState = () => {
-      if (peer.iceGatheringState === 'complete') {
-        peer.removeEventListener('icegatheringstatechange', onState)
-        resolve(peer.localDescription)
-      }
-    }
-    peer.addEventListener('icegatheringstatechange', onState)
-  })
 
   const setupDataChannel = (channel) => {
     channel.binaryType = 'arraybuffer'
@@ -127,6 +117,9 @@ function App() {
 
   const createPeer = (isHost) => {
     const peer = new RTCPeerConnection(TURN_CONFIG)
+    peer.onicecandidate = (event) => {
+      if (event.candidate) sendSignal({ type: 'candidate', candidate: event.candidate })
+    }
     peer.onconnectionstatechange = () => {
       if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) setConnected(false)
     }
@@ -151,16 +144,25 @@ function App() {
         const peer = peerRef.current || createPeer(true)
         const offer = await peer.createOffer()
         await peer.setLocalDescription(offer)
-        sendSignal({ type: 'offer', description: await waitForIce(peer, peer.localDescription) })
+        sendSignal({ type: 'offer', description: peer.localDescription })
       }
       if (message.type === 'offer' && !isHost) {
         const peer = peerRef.current || createPeer(false)
         await peer.setRemoteDescription(message.description)
         const answer = await peer.createAnswer()
         await peer.setLocalDescription(answer)
-        sendSignal({ type: 'answer', description: await waitForIce(peer, peer.localDescription) })
+        sendSignal({ type: 'answer', description: peer.localDescription })
       }
       if (message.type === 'answer' && isHost) await peerRef.current?.setRemoteDescription(message.description)
+      if (message.type === 'candidate') {
+        const peer = peerRef.current
+        if (!peer || !peer.remoteDescription) pendingCandidatesRef.current.push(message.candidate)
+        else await peer.addIceCandidate(message.candidate)
+      }
+      if (message.type === 'offer' || message.type === 'answer') {
+        const peer = peerRef.current
+        for (const candidate of pendingCandidatesRef.current.splice(0)) await peer?.addIceCandidate(candidate)
+      }
     }
     socket.onclose = () => { if (!connected) setStatus('Signaling server unavailable') }
     socket.onerror = () => setStatus('Start the signaling server to connect devices')
