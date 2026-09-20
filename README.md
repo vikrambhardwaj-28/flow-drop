@@ -1,0 +1,38 @@
+# React + Vite
+
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+
+Currently, two official plugins are available:
+
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the Oxlint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+
+# Flowdrop
+
+## HTTPS local testing
+
+The microphone sound-wave flow needs a secure browser context. Start both processes:
+
+```bash
+npm run server
+npm run dev -- --host 0.0.0.0
+```
+
+Open the app at:
+
+- `https://localhost:5173/` on this Mac
+- `https://192.168.1.5:5173/` on another device connected to the same Wi-Fi
+
+The local certificate is self-signed. On the first visit, choose **Advanced** and **Proceed** (or accept the certificate warning in the browser). Then allow microphone access. The signaling server also runs securely at `wss://localhost:8787`.
+
+The LAN address can change with the network. Find the current address with:
+
+```bash
+ipconfig getifaddr en0 || ipconfig getifaddr en1
+```
