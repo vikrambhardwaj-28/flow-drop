@@ -44,7 +44,7 @@ function App() {
   const [roomCode, setRoomCode] = useState('')
   const [joinCode, setJoinCode] = useState(() => new URLSearchParams(window.location.search).get('join') || '')
   const [roomMode, setRoomMode] = useState(() => new URLSearchParams(window.location.search).get('join')?.length === 6 ? 'join' : 'create')
-  const [theme, setTheme] = useState(() => localStorage.getItem('flowdrop-theme') || 'light')
+  const [theme, setTheme] = useState(() => localStorage.getItem('flowdrop-theme') || 'dark')
   const [soundWave, setSoundWave] = useState(false)
   const [activeTab, setActiveTab] = useState('share')
   const [connected, setConnected] = useState(false)
@@ -240,7 +240,10 @@ function App() {
     if (!file) return
     if (channelRef.current?.readyState !== 'open') return setStatus('Connect another device before sending')
     channelRef.current.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, mime: file.type }))
-    for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) channelRef.current.send(await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer())
+    for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
+      while (channelRef.current.bufferedAmount > 1024 * 1024) await new Promise((resolve) => window.setTimeout(resolve, 20))
+      channelRef.current.send(await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer())
+    }
     channelRef.current.send(JSON.stringify({ type: 'file-end' }))
     setTransfers((current) => [{ name: file.name, size: formatBytes(file.size), time: 'Just now', type: extension(file.name), direction: 'sent' }, ...current])
   }
