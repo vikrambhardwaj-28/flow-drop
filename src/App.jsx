@@ -43,10 +43,10 @@ async function emitRoomCode(code) {
 function App() {
   const [roomCode, setRoomCode] = useState('')
   const [joinCode, setJoinCode] = useState(() => new URLSearchParams(window.location.search).get('join') || '')
-  const [roomMode, setRoomMode] = useState(() => new URLSearchParams(window.location.search).get('join')?.length === 6 ? 'join' : 'create')
+  const [roomMode, setRoomMode] = useState('room')
   const [theme, setTheme] = useState(() => localStorage.getItem('flowdrop-theme') || 'dark')
   const [soundWave, setSoundWave] = useState(false)
-  const [activeTab, setActiveTab] = useState('share')
+  const [activeTab, setActiveTab] = useState('history')
   const [connected, setConnected] = useState(false)
   const [status, setStatus] = useState('Create a room to start sharing')
   const [copied, setCopied] = useState(false)
@@ -61,6 +61,7 @@ function App() {
   const receivingRef = useRef(null)
   const pendingCandidatesRef = useRef([])
   const audioRefs = useRef({ context: null, stream: null, frame: null })
+  const bootRef = useRef(false)
 
   useEffect(() => () => {
     channelRef.current?.close()
@@ -190,6 +191,33 @@ function App() {
     connectSocket(code, false)
   }
 
+  useEffect(() => {
+    if (bootRef.current) return
+    bootRef.current = true
+    const code = new URLSearchParams(window.location.search).get('join')
+    if (code?.length === 6) {
+      setJoinCode(code)
+      setRoomCode(code)
+      setStatus('Joining room securely...')
+      connectSocket(code, false)
+    } else {
+      createRoom(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (roomMode !== 'join') return
+    const code = window.prompt('Enter the 6-digit room PIN')?.replace(/\D/g, '').slice(0, 6)
+    if (code?.length === 6) {
+      setJoinCode(code)
+      setRoomCode(code)
+      setStatus('Joining room securely...')
+      connectSocket(code, false)
+    } else {
+      setRoomMode('room')
+    }
+  }, [roomMode])
+
   const listenForRoom = async () => {
     if (!navigator.mediaDevices?.getUserMedia) return setStatus('Microphone access is not available in this browser')
     setListening(true)
@@ -281,8 +309,6 @@ function App() {
   const downloadFile = (file) => { const blob = new Blob([`Flowdrop transfer: ${file.name}`]); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = file.name; link.click(); URL.revokeObjectURL(url) }
 
   const toggleTheme = () => setTheme((current) => { const next = current === 'light' ? 'dark' : 'light'; localStorage.setItem('flowdrop-theme', next); return next })
-
-  if (roomMode !== 'room') return <EntryScreen mode={roomMode} setMode={setRoomMode} joinCode={joinCode} setJoinCode={setJoinCode} createRoom={createRoom} joinRoom={joinRoom} listenForRoom={listenForRoom} listening={listening} status={status} theme={theme} toggleTheme={toggleTheme} />
 
   return <div className={`app-shell theme-${theme}`}><aside className="sidebar"><div className="brand"><span className="brand-mark">⌁</span><span>flowdrop</span></div><div className="workspace-label">WORKSPACE</div><nav><button className={activeTab === 'share' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('share')}><span>↗</span> Share files</button><button className={activeTab === 'clipboard' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('clipboard')}><span>▣</span> Clipboard</button><button className={activeTab === 'history' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveTab('history')}><span>◷</span> Transfer history</button></nav><div className="sidebar-bottom"><div className="avatar">AK</div><div><strong>Anonymous device</strong><small>Private workspace</small></div></div></aside><main className="main-content"><header className="topbar"><div><span className="eyebrow">ROOM / {roomCode}</span><h1>{activeTab === 'share' ? 'Share files' : activeTab === 'clipboard' ? 'Shared clipboard' : 'Transfer history'}</h1></div><div className="topbar-actions"><span className="secure"><i /> {connected ? 'WebRTC connected' : status}</span><button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? '☾' : '☀'}</button></div></header><section className={`room-banner ${soundWave ? 'sound-active' : ''}`}><div className="pulse-ring">⌁</div><div className="room-copy"><span className="eyebrow">6-DIGIT ROOM PIN {soundWave && '· SOUND WAVE'}</span><h2>{roomCode}</h2><p>{connected ? 'Devices are connected directly. Data stays peer-to-peer.' : status}</p></div>{soundWave && <div className="waveform" aria-label="Sound wave beacon active">{Array.from({ length: 18 }, (_, index) => <i key={index} style={{ '--bar': `${20 + ((index * 17) % 70)}%` }} />)}</div>}<div className="room-actions"><button className="outline-button" onClick={copyRoom}>▣ {copied ? 'Copied' : 'Copy PIN'}</button>{soundWave && <button className="outline-button" onClick={() => emitRoomCode(roomCode)}>∿ Emit PIN</button>}<button className="dark-button" onClick={() => setRoomMode('join')}>Join another <span>→</span></button></div>{qrData && <img className="room-qr-image" src={qrData} alt="Scan to join this room" />}</section>{activeTab === 'share' && <><section className="transfer-grid"><div className="upload-panel"><div className="section-heading"><div><span className="eyebrow">SEND TO ROOM</span><h2>Drop files here</h2></div><span className="network-badge"><i /> Direct WebRTC</span></div><div className="dropzone" onClick={() => fileInputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); handleFiles({ target: { files: event.dataTransfer.files, value: '' } }) }}><div className="upload-icon">↑</div><strong>Drag & drop files here</strong><p>or click to browse from your device</p><small>Chunks travel directly between networks</small><input ref={fileInputRef} type="file" hidden onChange={handleFiles} /></div><div className="network-row"><span>Works across mobile networks</span><div className="network-list"><b className="airtel">airtel</b><b className="jio">Jio</b><b className="vi">vi</b></div></div></div><div className="clipboard-panel"><div className="section-heading"><div><span className="eyebrow">QUICK SHARE</span><h2>Clipboard</h2></div><span className="live-dot">● Live</span></div><textarea value={clipboard} onChange={(event) => sendClipboard(event.target.value)} /><div className="clipboard-footer"><span>Syncs over data channel</span><button className="mini-button" onClick={() => navigator.clipboard?.writeText(clipboard)}>Copy <span>↗</span></button></div></div></section><TransferList transfers={transfers} onDownload={downloadFile} /></>}{activeTab === 'clipboard' && <section className="large-clipboard"><span className="eyebrow">REAL-TIME TEXT SYNC</span><h2>Anything you copy, everywhere.</h2><textarea value={clipboard} onChange={(event) => sendClipboard(event.target.value)} /><button className="dark-button" onClick={() => navigator.clipboard?.writeText(clipboard)}>Copy to device →</button></section>}{activeTab === 'history' && <TransferList transfers={transfers} onDownload={downloadFile} full />}<footer><span>Flowdrop v1.0</span><span>Native WebRTC data channel · No cloud storage</span><span className="connection"><i /> {connected ? 'Connected' : 'Waiting'}</span></footer></main></div>
 }

@@ -95,3 +95,11 @@ footer { gap: 24px; padding-top: 20px; border-top: 1px solid #e4e0d9; color: #aa
 @keyframes wave { from { transform: scaleY(.55); opacity: .55; } to { transform: scaleY(1.1); opacity: 1; } } @keyframes pulse-glow { 50% { box-shadow: 0 0 0 10px rgba(235,105,69,.08), 0 0 28px rgba(235,105,69,.28); } }
 @keyframes ambient-drift { to { transform: rotate(360deg); } }
 @media (max-width: 800px) { .waveform { display: none; }.entry-theme-toggle { top: 18px; right: 18px; } }
+
+/* Color glass surfaces */
+.app-shell { background: #101317; }
+.app-shell:before { background: radial-gradient(circle at 4% 12%, rgba(255, 105, 154, .25), transparent 26%), radial-gradient(circle at 94% 16%, rgba(74, 180, 255, .22), transparent 28%), radial-gradient(circle at 68% 92%, rgba(190, 112, 255, .2), transparent 27%), radial-gradient(circle at 20% 78%, rgba(73, 218, 183, .16), transparent 24%); }
+.theme-dark .sidebar, .theme-dark .upload-panel, .theme-dark .large-clipboard, .theme-dark .entry-card { background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.035)); border-color: rgba(255,255,255,.15); box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 20px 80px rgba(0,0,0,.3); }
+.theme-dark .clipboard-panel { background: linear-gradient(135deg, rgba(75, 222, 193, .18), rgba(67, 133, 255, .1)); border-color: rgba(117, 235, 216, .25); }
+.theme-dark .room-banner { background: linear-gradient(120deg, rgba(255, 105, 154, .22), rgba(106, 132, 255, .17) 48%, rgba(67, 214, 187, .16)); border-color: rgba(255,255,255,.19); }
+.theme-dark .dropzone { background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,255,255,.035)); border-color: rgba(255,255,255,.25); }
