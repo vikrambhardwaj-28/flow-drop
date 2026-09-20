@@ -1,7 +1,7 @@
 .app-shell { min-height: 100vh; display: flex; background: #f6f5f1; }
 .sidebar { width: 244px; padding: 28px 16px 18px; display: flex; flex-direction: column; border-right: 1px solid #e4e0d9; background: #faf9f6; flex-shrink: 0; }
 .brand { display: flex; align-items: center; gap: 9px; padding: 0 12px 50px; font-size: 19px; font-weight: 700; letter-spacing: -.6px; color: #26211d; }
-.brand-mark { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 8px; color: #fff; background: #ee6945; font-size: 25px; line-height: 1; transform: rotate(-10deg); }
+.brand-mark { display: block; width: 36px; height: 36px; border-radius: 11px; color: transparent; background: #18333a url('/air-share-logo.svg') center / cover no-repeat; font-size: 0; line-height: 0; box-shadow: 0 9px 28px rgba(37,135,232,.3), inset 0 1px 0 rgba(255,255,255,.55); }
 .workspace-label, .eyebrow { color: #9c968e; font-size: 10px; letter-spacing: 1.4px; font-weight: 700; }
 .workspace-label { padding: 0 12px 11px; }
 nav { display: grid; gap: 5px; }
@@ -106,7 +106,7 @@ footer { gap: 24px; padding-top: 20px; border-top: 1px solid #e4e0d9; color: #aa
 .brand > span:last-child { font-size: 0; }.brand > span:last-child:after { content: 'Air Share'; font-size: 19px; }
 
 /* Larger, tactile controls and stronger liquid-glass reflections */
-.brand-mark { width: 36px; height: 36px; border-radius: 11px; font-size: 31px; box-shadow: 0 9px 28px rgba(238,105,69,.4), inset 0 1px 0 rgba(255,255,255,.65); }
+.brand-mark { width: 36px; height: 36px; }
 .nav-item span { width: 24px; font-size: 24px; }.nav-item { min-height: 48px; font-size: 14px; }
 .pulse-ring { width: 68px; height: 68px; font-size: 38px; border-width: 2px; box-shadow: 0 0 30px rgba(235,105,69,.2), inset 0 0 18px rgba(255,255,255,.16); }
 .room-qr-image { width: 106px; height: 106px; padding: 7px; border: 1px solid rgba(255,255,255,.7); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.25), 0 0 0 6px rgba(255,255,255,.1); }
@@ -117,6 +117,6 @@ footer { gap: 24px; padding-top: 20px; border-top: 1px solid #e4e0d9; color: #aa
 .dropzone { min-height: 174px; border-radius: 16px; border-color: rgba(255,255,255,.28); background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.035)); box-shadow: inset 0 1px 0 rgba(255,255,255,.18); }
 .theme-dark .theme-toggle { width: 42px; height: 42px; font-size: 20px; box-shadow: 0 8px 24px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.25); }
 .waveform i { width: 4px; box-shadow: 0 0 12px rgba(234,121,90,.8); }
-@media (max-width: 600px) { .brand-mark { width: 34px; height: 34px; font-size: 29px; }.nav-item { width: 46px; height: 46px; min-height: 46px; }.nav-item span { font-size: 23px; }.pulse-ring { width: 58px; height: 58px; font-size: 31px; }.room-qr-image { width: 78px; height: 78px; }.upload-icon { width: 58px; height: 58px; font-size: 31px; }.dropzone { min-height: 190px; } }
+@media (max-width: 600px) { .brand-mark { width: 34px; height: 34px; }.nav-item { width: 46px; height: 46px; min-height: 46px; }.nav-item span { font-size: 23px; }.pulse-ring { width: 58px; height: 58px; font-size: 31px; }.room-qr-image { width: 78px; height: 78px; }.upload-icon { width: 58px; height: 58px; font-size: 31px; }.dropzone { min-height: 190px; } }
 .join-card { display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; align-items: center; padding: 24px; margin-bottom: 22px; border: 1px solid rgba(111, 205, 255, .32); border-radius: 24px; background: linear-gradient(120deg, rgba(69, 155, 255, .2), rgba(198, 102, 255, .14), rgba(74, 226, 188, .16)); backdrop-filter: blur(24px); box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 22px 70px rgba(35, 89, 170, .2); }.join-card h2 { margin: 7px 0 5px; color: #f4f7ff; font-family: Georgia, serif; font-size: 25px; font-weight: 500; }.join-card p { margin: 0; color: #b7c9e5; font-size: 11px; }.join-controls { display: grid; grid-template-columns: 1fr auto; gap: 9px; }.join-controls input { min-width: 0; padding: 12px 14px; border: 1px solid rgba(255,255,255,.25); border-radius: 12px; outline: none; color: #fff; background: rgba(5, 16, 35, .34); font-size: 18px; letter-spacing: 4px; }.join-controls .listen-button { grid-column: 1 / -1; margin: 0; border-color: rgba(255,255,255,.22); color: #d6fff5; background: rgba(83, 211, 187, .14); }.join-controls .dark-button { white-space: nowrap; }.theme-light .join-card { color: #25304c; background: linear-gradient(120deg, rgba(130, 198, 255, .35), rgba(234, 179, 255, .35), rgba(139, 242, 209, .3)); }.theme-light .join-card h2 { color: #25304c; }.theme-light .join-card p { color: #53617b; }.theme-light .join-controls input { color: #25304c; background: rgba(255,255,255,.45); }
 @media (max-width: 600px) { .join-card { grid-template-columns: 1fr; gap: 16px; padding: 18px; border-radius: 20px; }.join-card h2 { font-size: 22px; }.join-controls { grid-template-columns: 1fr auto; }.join-controls input { font-size: 16px; } }
