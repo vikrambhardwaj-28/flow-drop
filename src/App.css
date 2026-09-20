@@ -2,7 +2,7 @@
 .sidebar { width: 244px; padding: 28px 16px 18px; display: flex; flex-direction: column; border-right: 1px solid #e4e0d9; background: #faf9f6; flex-shrink: 0; }
 .brand { display: flex; align-items: center; gap: 9px; padding: 0 12px 50px; font-size: 19px; font-weight: 700; letter-spacing: -.6px; color: #26211d; }
 .brand-mark { display: block; width: 36px; height: 36px; border-radius: 11px; color: transparent; background: #18333a url('/air-share-logo.svg') center / cover no-repeat; font-size: 0; line-height: 0; box-shadow: 0 9px 28px rgba(37,135,232,.3), inset 0 1px 0 rgba(255,255,255,.55); }
-.brand-mark { background-image: url('/air-share-logo.svg?v=2') !important; background-size: cover !important; }
+.brand-mark { background-image: linear-gradient(#2587e8,#2587e8), linear-gradient(#ef4d4d,#ef4d4d), linear-gradient(#ffc21c,#ffc21c), linear-gradient(#36b866,#36b866) !important; background-position: 8px 8px, 20px 8px, 8px 20px, 20px 20px !important; background-size: 10px 10px !important; background-repeat: no-repeat !important; background-color: #18333a !important; }
 .workspace-label, .eyebrow { color: #9c968e; font-size: 10px; letter-spacing: 1.4px; font-weight: 700; }
 .workspace-label { padding: 0 12px 11px; }
 nav { display: grid; gap: 5px; }
