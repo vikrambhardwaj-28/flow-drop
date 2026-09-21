@@ -1,6 +1,6 @@
 {
-  "name": "Air Share",
-  "short_name": "Air Share",
+  "name": "Air Share Pro",
+  "short_name": "Air Share Pro",
   "description": "Fast, private peer-to-peer file and clipboard sharing.",
   "start_url": "/",
   "display": "standalone",

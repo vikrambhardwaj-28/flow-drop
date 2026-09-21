@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://airshare.markiv.site/sitemap.xml
+Sitemap: https://airshare-pro.markiv.site/sitemap.xml

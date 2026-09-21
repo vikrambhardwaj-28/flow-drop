@@ -71,4 +71,4 @@ server.on('connection', (socket) => {
   })
 })
 
-appServer.listen(port, () => console.log(`Flowdrop server listening on ${appServer instanceof https.Server ? 'https' : 'http'}://localhost:${port}`))
+appServer.listen(port, () => console.log(`Air Share Pro server listening on ${appServer instanceof https.Server ? 'https' : 'http'}://localhost:${port}`))
