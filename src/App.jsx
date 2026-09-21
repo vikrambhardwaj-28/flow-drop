@@ -88,6 +88,8 @@ function App() {
   }
 
   const connect = (code, host) => {
+    socket.current?.close()
+    peer.current?.close()
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const port = window.location.port === '5173' ? ':8787' : ''
     const connection = new WebSocket(`${protocol}://${window.location.hostname}${port}`)
@@ -100,12 +102,17 @@ function App() {
       if (message.type === 'answer' && host) await peer.current?.setRemoteDescription(message.description)
       if (message.type === 'candidate' && peer.current) await peer.current.addIceCandidate(message.candidate).catch(() => {})
     }
-    connection.onerror = () => setStatus('Signaling server unavailable')
+    connection.onerror = () => { if (host) setStatus('Room ready. Share the PIN or QR. Signaling is reconnecting...') }
+    connection.onclose = () => { if (host && socket.current === connection) setStatus('Room ready. Share the PIN or QR. Signaling is reconnecting...') }
   }
 
   const createRoom = (wave) => {
-    const code = makeCode(); setRoomCode(code); setSoundWave(wave); setStatus('Room ready. Share the PIN or QR.'); connect(code, true)
+    const code = makeCode()
+    setRoomCode(code)
+    setSoundWave(wave)
+    setStatus('Room ready. Share the PIN or QR.')
     QRCode.toDataURL(`${window.location.origin}/?join=${code}`, { width: 220, margin: 1 }, (_, url) => setQr(url || ''))
+    connect(code, true)
     if (wave) emit(code)
   }
 
