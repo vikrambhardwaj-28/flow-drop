@@ -3,3 +3,19 @@
 body { margin: 0; min-width: 320px; }
 button, textarea { font: inherit; }
 button { cursor: pointer; }
+
+/* Fixed wallpapers with subtle, premium floating glass cards. */
+.app-shell { position: relative !important; isolation: isolate; overflow: hidden; background: #090615 !important; }
+.app-shell::before { position: fixed; inset: 0; z-index: 0; pointer-events: none; content: ''; background-position: center; background-size: cover; background-repeat: no-repeat; }
+.app-shell::after { position: fixed; inset: 0; z-index: 0; pointer-events: none; content: ''; background: linear-gradient(115deg, rgba(5,5,19,.64), rgba(10,5,28,.41) 48%, rgba(4,12,26,.57)); }
+.theme-dark::before { background-image: url('https://4kwallpapers.com/images/wallpapers/dark-purple-1920x1080-17330.png'); }
+.theme-light::before { background-image: url('https://images7.alphacoders.com/140/thumb-1920-1402492.png'); }
+.theme-light::after { background: linear-gradient(115deg, rgba(241,247,255,.56), rgba(232,241,255,.30) 48%, rgba(244,249,255,.49)); }
+.sidebar, .main-content { position: relative; z-index: 1; }
+.sidebar { background: rgba(7,10,28,.20) !important; backdrop-filter: blur(7px) !important; -webkit-backdrop-filter: blur(7px) !important; }
+.theme-light .sidebar { background: rgba(248,251,255,.26) !important; }
+.room-banner, .upload-panel, .clipboard-panel, .join-card, .transfer-progress, .history-table { border-color: rgba(221,228,255,.23) !important; background: rgba(12,17,42,.46) !important; box-shadow: 0 14px 38px rgba(3,5,22,.22), 0 0 30px rgba(123,101,255,.14), inset 0 1px rgba(255,255,255,.23) !important; backdrop-filter: blur(5px) !important; -webkit-backdrop-filter: blur(5px) !important; animation: premium-float 7s ease-in-out infinite; }
+.theme-light .room-banner, .theme-light .upload-panel, .theme-light .clipboard-panel, .theme-light .join-card, .theme-light .transfer-progress, .theme-light .history-table { border-color: rgba(255,255,255,.68) !important; background: rgba(250,252,255,.47) !important; box-shadow: 0 14px 38px rgba(42,64,113,.16), 0 0 28px rgba(111,157,255,.16), inset 0 1px rgba(255,255,255,.75) !important; }
+.room-banner { animation-delay: -2.2s; }.join-card { animation-delay: -4.6s; }.upload-panel { animation-delay: -1.1s; }.clipboard-panel { animation-delay: -3.7s; }.transfer-progress { animation-delay: -5.4s; }.history-table { animation-delay: -.4s; }
+@keyframes premium-float { 0%, 100% { transform: translate3d(0,0,0); } 50% { transform: translate3d(0,-7px,0); } }
+@media (prefers-reduced-motion: reduce) { .room-banner, .upload-panel, .clipboard-panel, .join-card, .transfer-progress, .history-table { animation: none; } }
