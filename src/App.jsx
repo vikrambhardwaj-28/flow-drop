@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import './App.css'
 
 const CHUNK_SIZE = 64 * 1024
+const ROOM_READY_TIMEOUT = 4000
 // Wider tone separation and longer beeps make PIN pairing easier to hear and detect.
 const TONES = [1100, 1280, 1460, 1640, 1820, 2000, 2180, 2360, 2540, 2720]
 const turnUrls = (import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_URL || '')
@@ -56,6 +57,8 @@ function App() {
   const pendingCandidates = useRef([])
   const fileInput = useRef(null)
   const audio = useRef({ context: null, stream: null, frame: null })
+  const roomTimer = useRef(null)
+  const reconnectAttempts = useRef(0)
 
   const signal = (message) => socket.current?.send(JSON.stringify(message))
 
@@ -108,6 +111,7 @@ function App() {
   }
 
   const connect = (code, host) => {
+    if (roomTimer.current) clearTimeout(roomTimer.current)
     socket.current?.close()
     peer.current?.close()
     channel.current = null
@@ -122,7 +126,12 @@ function App() {
     connection.onopen = () => signal({ type: 'room', room: code, host })
     connection.onmessage = async (event) => {
       const message = JSON.parse(event.data)
-      if (message.type === 'room-ready') { setStatus(host ? 'Room ready. Share the PIN or QR.' : 'Waiting for the other device...'); return }
+      if (message.type === 'room-ready') {
+        clearTimeout(roomTimer.current)
+        reconnectAttempts.current = 0
+        setStatus(host ? 'Room ready. Share the PIN or QR.' : 'Waiting for the other device...')
+        return
+      }
       if (message.type === 'peer-joined' && host) { const rtc = peer.current || makePeer(true); const offer = await rtc.createOffer(); await rtc.setLocalDescription(offer); signal({ type: 'offer', description: rtc.localDescription }) }
       if (message.type === 'offer' && !host) { const rtc = peer.current || makePeer(false); await rtc.setRemoteDescription(message.description); await addPendingCandidates(rtc); const answer = await rtc.createAnswer(); await rtc.setLocalDescription(answer); signal({ type: 'answer', description: rtc.localDescription }) }
       if (message.type === 'answer' && host && peer.current) { await peer.current.setRemoteDescription(message.description); await addPendingCandidates(peer.current) }
@@ -134,12 +143,22 @@ function App() {
     connection.onerror = () => { if (socket.current === connection) setStatus('Could not reach the room server. Start npm run server, then try again.') }
     connection.onclose = (event) => {
       if (socket.current !== connection) return
+      clearTimeout(roomTimer.current)
       if (event.code === 1013) setStatus('This room already has two devices. Create a new room to try again.')
       else if (event.code !== 1000) setStatus('Room server connection closed. Create a new room to retry.')
     }
+    roomTimer.current = setTimeout(() => {
+      if (socket.current !== connection || connection.readyState === WebSocket.CLOSED) return
+      if (reconnectAttempts.current >= 2) return setStatus('Room server did not respond in 4 seconds. Please try New room.')
+      reconnectAttempts.current += 1
+      setStatus('Room service is slow. Retrying automatically…')
+      connection.close()
+      setTimeout(() => connect(code, host), 250)
+    }, ROOM_READY_TIMEOUT)
   }
 
   const createRoom = (wave) => {
+    reconnectAttempts.current = 0
     const code = makeCode()
     setRoomCode(code)
     setSoundWave(wave)
@@ -159,7 +178,7 @@ function App() {
     const code = new URLSearchParams(window.location.search).get('join')
     if (code?.length === 6) join(code)
     else createRoom(false)
-    return () => { channel.current?.close(); peer.current?.close(); socket.current?.close(); audio.current.stream?.getTracks().forEach((track) => track.stop()); audio.current.context?.close(); if (audio.current.frame) cancelAnimationFrame(audio.current.frame) }
+    return () => { clearTimeout(roomTimer.current); channel.current?.close(); peer.current?.close(); socket.current?.close(); audio.current.stream?.getTracks().forEach((track) => track.stop()); audio.current.context?.close(); if (audio.current.frame) cancelAnimationFrame(audio.current.frame) }
   }, [])
 
   const playTone = async (context, frequency) => {
