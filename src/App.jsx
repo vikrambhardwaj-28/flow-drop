@@ -12,6 +12,20 @@ const bytes = (size) => size < 1048576 ? `${Math.max(1, Math.round(size / 1024))
 const clock = () => new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date())
 const duration = (seconds) => !Number.isFinite(seconds) || seconds <= 0 ? 'done' : seconds < 60 ? `${Math.ceil(seconds)}s left` : `${Math.floor(seconds / 60)}m left`
 
+function Icon({ name, size = 20 }) {
+  const icons = {
+    share: <><path d="M12 3v12" /><path d="m7 8 5-5 5 5" /><path d="M5 13v6h14v-6" /></>,
+    clipboard: <><rect x="6" y="5" width="12" height="15" rx="2" /><path d="M9 5V3h6v2" /><path d="M9 10h6M9 14h4" /></>,
+    history: <><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /><path d="M12 7v5l3 2" /></>,
+    copy: <><rect x="9" y="9" width="10" height="10" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></>,
+    wave: <><path d="M3 12h2l2.2-6 3.5 12 3-9 2.1 5H21" /></>,
+    upload: <><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 20h14" /></>,
+    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+    moon: <path d="M20 15.4A8.5 8.5 0 0 1 8.6 4 8.5 8.5 0 1 0 20 15.4Z" />,
+  }
+  return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name]}</svg>
+}
+
 function App() {
   const [roomCode, setRoomCode] = useState('')
   const [joinCode, setJoinCode] = useState('')
@@ -153,7 +167,23 @@ function App() {
   const sendClipboard = (text) => { setClipboard(text); if (channel.current?.readyState === 'open') channel.current.send(JSON.stringify({ type: 'clipboard', text })) }
   const toggleTheme = () => setTheme((value) => { const next = value === 'dark' ? 'light' : 'dark'; localStorage.setItem('air-share-pro-theme', next); return next })
 
-  return <div className={`app-shell theme-${theme}`}><aside className="sidebar"><div className="brand"><img className="brand-logo" src="/air-share-logo.svg" alt="Air Share Pro logo" /><span>Air Share Pro</span></div><nav><button disabled={!connected} className={connected ? 'nav-item active' : 'nav-item'}><span>↗</span> Share</button><button disabled={!connected} className="nav-item"><span>▣</span> Clipboard</button><button className="nav-item active"><span>◷</span> History</button></nav></aside><main className="main-content"><header className="topbar"><div><span className="eyebrow">AIR SHARE PRO / ROOM</span><h1>{connected ? 'Ready to share' : 'Connect two devices'}</h1></div><div className="topbar-actions"><span className="secure"><i /> {connected ? 'Connected' : status}</span><button className="theme-toggle" onClick={toggleTheme} aria-label="Change color theme">{theme === 'dark' ? '☀' : '☾'}</button></div></header><section className={`room-banner ${soundWave ? 'sound-active' : ''}`}><div className="pulse-ring"><img src="/air-share-logo.svg" alt="" /></div><div className="room-copy"><span className="eyebrow">SHARE THIS ROOM</span><h2>{roomCode || '------'}</h2><p>{status}</p></div>{qr && <img className="room-qr-image" src={qr} alt="Scan to join Air Share Pro room" />}<div className="room-actions"><button className="outline-button" onClick={() => navigator.clipboard?.writeText(roomCode)}>▣ Copy PIN</button><button className="outline-button" onClick={() => emit(roomCode)}>∿ Emit sound wave</button></div></section>{!connected && <JoinCard code={joinCode} setCode={setJoinCode} join={join} listen={listen} listening={listening} />}{connected && <section className="transfer-grid"><div className="upload-panel"><div className="section-heading"><div><span className="eyebrow">SEND FILE</span><h2>Drop files here</h2></div><span className="network-badge"><i /> Direct WebRTC</span></div><div className="dropzone" onClick={() => fileInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); sendFile(event.dataTransfer.files[0]) }}><div className="upload-icon">↑</div><strong>Choose a file or drag it here</strong><p>Fast direct transfer on any network</p><input ref={fileInput} hidden type="file" onChange={(event) => { sendFile(event.target.files[0]); event.target.value = '' }} /></div></div><div className="clipboard-panel"><div className="section-heading"><div><span className="eyebrow">QUICK SHARE</span><h2>Clipboard</h2></div><span className="live-dot">● Live</span></div><textarea value={clipboard} onChange={(event) => sendClipboard(event.target.value)} /><small>Syncs instantly with this room</small></div></section>}{progress && <TransferProgress progress={progress} />}<History transfers={transfers} /><AirShareFooter /></main></div>
+  return <div className={`app-shell theme-${theme}`}>
+    <aside className="sidebar">
+      <div className="brand"><img className="brand-logo" src="/air-share-logo.svg" alt="Air Share Pro logo" /><span>Air Share Pro</span></div>
+      <nav>
+        <button disabled={!connected} className={connected ? 'nav-item active' : 'nav-item'}><Icon name="share" /> <span>Share</span></button>
+        <button disabled={!connected} className="nav-item"><Icon name="clipboard" /> <span>Clipboard</span></button>
+        <button className="nav-item active"><Icon name="history" /> <span>History</span></button>
+      </nav>
+    </aside>
+    <main className="main-content">
+      <header className="topbar"><div><span className="eyebrow">AIR SHARE PRO / PRIVATE ROOM</span><h1>{connected ? 'Ready to share' : 'Connect your devices'}</h1></div><div className="topbar-actions"><span className="secure"><i /> {connected ? 'Connected' : status}</span><button className="theme-toggle" onClick={toggleTheme} aria-label="Change color theme"><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button></div></header>
+      <section className={`room-banner ${soundWave ? 'sound-active' : ''}`}><div className="pulse-ring"><img src="/air-share-logo.svg" alt="" /></div><div className="room-copy"><span className="eyebrow">YOUR SECURE ROOM</span><h2>{roomCode || '------'}</h2><p>{status}</p></div>{qr && <img className="room-qr-image" src={qr} alt="Scan to join Air Share Pro room" />}<div className="room-actions"><button className="outline-button" onClick={() => navigator.clipboard?.writeText(roomCode)}><Icon name="copy" size={16} /> Copy PIN</button><button className="outline-button" onClick={() => emit(roomCode)}><Icon name="wave" size={16} /> Sound wave</button></div></section>
+      {!connected && <JoinCard code={joinCode} setCode={setJoinCode} join={join} listen={listen} listening={listening} />}
+      {connected && <section className="transfer-grid"><div className="upload-panel"><div className="section-heading"><div><span className="eyebrow">SEND FILE</span><h2>Drop files here</h2></div><span className="network-badge"><i /> Direct WebRTC</span></div><div className="dropzone" onClick={() => fileInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); sendFile(event.dataTransfer.files[0]) }}><div className="upload-icon"><Icon name="upload" size={27} /></div><strong>Choose a file or drag it here</strong><p>Encrypted direct transfer on any network</p><input ref={fileInput} hidden type="file" onChange={(event) => { sendFile(event.target.files[0]); event.target.value = '' }} /></div></div><div className="clipboard-panel"><div className="section-heading"><div><span className="eyebrow">QUICK SHARE</span><h2>Clipboard</h2></div><span className="live-dot"><i /> Live</span></div><textarea value={clipboard} onChange={(event) => sendClipboard(event.target.value)} /><small>Syncs instantly with this room</small></div></section>}
+      {progress && <TransferProgress progress={progress} />}<History transfers={transfers} /><AirShareFooter />
+    </main>
+  </div>
 }
 
 function JoinCard({ code, setCode, join, listen, listening }) { return <section className="join-card"><div><span className="eyebrow">JOIN ANOTHER ROOM</span><h2>Enter a PIN or listen</h2><p>Use the 6-digit PIN from another Air Share Pro room.</p></div><div className="join-controls"><input aria-label="Room PIN" inputMode="numeric" maxLength="6" placeholder="000000" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} /><button className="dark-button" onClick={() => join()}>Join →</button><button className={`listen-button ${listening ? 'listening' : ''}`} onClick={listen}>{listening ? 'Listening...' : '◌ Listen for sound wave'}</button></div></section> }
