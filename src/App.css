@@ -29,7 +29,7 @@ nav { display: grid; gap: 5px; }
 .help-button { border: 1px solid #d4cfc8; border-radius: 50%; font-size: 12px; }
 .room-banner { position: relative; gap: 17px; min-height: 130px; padding: 21px 24px; margin-bottom: 28px; overflow: hidden; border: 1px solid #efd2c6; border-radius: 10px; background: #fdf0ea; }
 .room-banner:after { content: ''; position: absolute; right: 150px; top: -85px; width: 290px; height: 240px; border: 1px solid #f4cfc1; border-radius: 50%; transform: rotate(-28deg); }
-.pulse-ring { display: grid; place-items: center; width: 54px; height: 54px; border: 1px solid #ec987c; border-radius: 50%; color: #eb6945; font-size: 30px; }
+ .pulse-ring { display: grid; place-items: center; width: 54px; height: 54px; border: 1px solid rgba(255,255,255,.34); border-radius: 50%; color: transparent; background: rgba(24,51,58,.78) url('/air-share-logo.svg?v=8') center / 78% 78% no-repeat; font-size: 0; box-shadow: 0 0 28px rgba(37,135,232,.24), inset 0 1px 0 rgba(255,255,255,.45); }
 .room-copy { min-width: 235px; }
 .room-copy h2 { margin: 3px 0 2px; font-family: Georgia, serif; font-size: 25px; font-weight: 500; letter-spacing: 1px; }
 .room-copy p { color: #9b8177; font-size: 11px; }
