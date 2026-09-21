@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://airshare.markiv.site/sitemap.xml

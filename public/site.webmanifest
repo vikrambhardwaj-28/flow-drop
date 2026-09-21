@@ -1,0 +1,17 @@
+{
+  "name": "Air Share",
+  "short_name": "Air Share",
+  "description": "Fast, private peer-to-peer file and clipboard sharing.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101317",
+  "theme_color": "#101317",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
