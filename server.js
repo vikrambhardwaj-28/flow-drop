@@ -49,14 +49,21 @@ const server = new WebSocketServer({ server: appServer })
 
 server.on('connection', (socket) => {
   socket.on('message', (raw) => {
-    const message = JSON.parse(raw.toString())
+    let message
+    try {
+      message = JSON.parse(raw.toString())
+    } catch {
+      return socket.close(1003, 'Invalid message')
+    }
     if (message.type === 'room') {
+      if (!/^\d{6}$/.test(message.room || '')) return socket.close(1008, 'Invalid room')
       socket.room = message.room
-      socket.isHost = message.host
+      socket.isHost = message.host === true
       const peers = rooms.get(message.room) || []
       if (peers.length >= 2) return socket.close(1013, 'Room full')
       peers.push(socket)
       rooms.set(message.room, peers)
+      socket.send(JSON.stringify({ type: 'room-ready', room: message.room }))
       if (peers.length === 2) peers[0].send(JSON.stringify({ type: 'peer-joined' }))
       return
     }

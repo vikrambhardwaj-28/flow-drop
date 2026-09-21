@@ -5,7 +5,18 @@ import './App.css'
 const CHUNK_SIZE = 64 * 1024
 // Wider tone separation and longer beeps make PIN pairing easier to hear and detect.
 const TONES = [1100, 1280, 1460, 1640, 1820, 2000, 2180, 2360, 2540, 2720]
-const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+const turnUrls = (import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_URL || '')
+  .split(',')
+  .map((url) => url.trim())
+  .filter(Boolean)
+const ICE = {
+  // STUN finds the fastest direct route. TURN is the reliable fallback for carrier NAT.
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+    ...(turnUrls.length ? [{ urls: turnUrls, username: import.meta.env.VITE_TURN_USERNAME, credential: import.meta.env.VITE_TURN_CREDENTIAL }] : []),
+  ],
+  iceCandidatePoolSize: 6,
+}
 const makeCode = () => String(Math.floor(100000 + Math.random() * 900000))
 const extension = (name) => name.split('.').pop()?.toLowerCase() || 'file'
 const bytes = (size) => size < 1048576 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1048576).toFixed(1)} MB`
@@ -42,6 +53,7 @@ function App() {
   const peer = useRef(null)
   const channel = useRef(null)
   const receiving = useRef(null)
+  const pendingCandidates = useRef([])
   const fileInput = useRef(null)
   const audio = useRef({ context: null, stream: null, frame: null })
 
@@ -77,10 +89,18 @@ function App() {
     channel.current = dataChannel
   }
 
+  const addPendingCandidates = async (connection) => {
+    const candidates = pendingCandidates.current.splice(0)
+    await Promise.all(candidates.map((candidate) => connection.addIceCandidate(candidate).catch(() => {})))
+  }
+
   const makePeer = (host) => {
-    const turn = import.meta.env.VITE_TURN_URL ? [{ urls: import.meta.env.VITE_TURN_URL, username: import.meta.env.VITE_TURN_USERNAME, credential: import.meta.env.VITE_TURN_CREDENTIAL }] : []
-    const connection = new RTCPeerConnection({ iceServers: [...ICE.iceServers, ...turn] })
+    const connection = new RTCPeerConnection(ICE)
     connection.onicecandidate = (event) => event.candidate && signal({ type: 'candidate', candidate: event.candidate })
+    connection.onconnectionstatechange = () => {
+      if (connection.connectionState === 'connecting') setStatus('Connecting securely…')
+      if (connection.connectionState === 'failed') setStatus('Connection failed. Check TURN relay configuration, then try a new room.')
+    }
     if (host) setupChannel(connection.createDataChannel('air-share'))
     else connection.ondatachannel = (event) => setupChannel(event.channel)
     peer.current = connection
@@ -90,27 +110,40 @@ function App() {
   const connect = (code, host) => {
     socket.current?.close()
     peer.current?.close()
+    channel.current = null
+    peer.current = null
+    pendingCandidates.current = []
+    setStatus(host ? 'Creating your private room...' : 'Joining room...')
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const port = window.location.port === '5173' ? ':8787' : ''
-    const connection = new WebSocket(`${protocol}://${window.location.hostname}${port}`)
+    const endpoint = import.meta.env.VITE_SIGNALING_URL || `${protocol}://${window.location.hostname}${port}`
+    const connection = new WebSocket(endpoint)
     socket.current = connection
-    connection.onopen = () => { signal({ type: 'room', room: code, host }); if (host) setStatus('Room ready. Share the PIN or QR.') }
+    connection.onopen = () => signal({ type: 'room', room: code, host })
     connection.onmessage = async (event) => {
       const message = JSON.parse(event.data)
+      if (message.type === 'room-ready') { setStatus(host ? 'Room ready. Share the PIN or QR.' : 'Waiting for the other device...'); return }
       if (message.type === 'peer-joined' && host) { const rtc = peer.current || makePeer(true); const offer = await rtc.createOffer(); await rtc.setLocalDescription(offer); signal({ type: 'offer', description: rtc.localDescription }) }
-      if (message.type === 'offer' && !host) { const rtc = peer.current || makePeer(false); await rtc.setRemoteDescription(message.description); const answer = await rtc.createAnswer(); await rtc.setLocalDescription(answer); signal({ type: 'answer', description: rtc.localDescription }) }
-      if (message.type === 'answer' && host) await peer.current?.setRemoteDescription(message.description)
-      if (message.type === 'candidate' && peer.current) await peer.current.addIceCandidate(message.candidate).catch(() => {})
+      if (message.type === 'offer' && !host) { const rtc = peer.current || makePeer(false); await rtc.setRemoteDescription(message.description); await addPendingCandidates(rtc); const answer = await rtc.createAnswer(); await rtc.setLocalDescription(answer); signal({ type: 'answer', description: rtc.localDescription }) }
+      if (message.type === 'answer' && host && peer.current) { await peer.current.setRemoteDescription(message.description); await addPendingCandidates(peer.current) }
+      if (message.type === 'candidate') {
+        if (peer.current?.remoteDescription) await peer.current.addIceCandidate(message.candidate).catch(() => {})
+        else pendingCandidates.current.push(message.candidate)
+      }
     }
-    connection.onerror = () => { if (host) setStatus('Room ready. Share the PIN or QR. Signaling is reconnecting...') }
-    connection.onclose = () => { if (host && socket.current === connection) setStatus('Room ready. Share the PIN or QR. Signaling is reconnecting...') }
+    connection.onerror = () => { if (socket.current === connection) setStatus('Could not reach the room server. Start npm run server, then try again.') }
+    connection.onclose = (event) => {
+      if (socket.current !== connection) return
+      if (event.code === 1013) setStatus('This room already has two devices. Create a new room to try again.')
+      else if (event.code !== 1000) setStatus('Room server connection closed. Create a new room to retry.')
+    }
   }
 
   const createRoom = (wave) => {
     const code = makeCode()
     setRoomCode(code)
     setSoundWave(wave)
-    setStatus('Room ready. Share the PIN or QR.')
+    setStatus('Creating your private room...')
     QRCode.toDataURL(`${window.location.origin}/?join=${code}`, { width: 220, margin: 1 }, (_, url) => setQr(url || ''))
     connect(code, true)
     if (wave) emit(code)
@@ -196,7 +229,7 @@ function App() {
     </aside>
     <main className="main-content">
         <header className="topbar"><div><span className="eyebrow">AIR SHARE PRO / PRIVATE ROOM</span><h1>{connected ? 'Ready to share' : 'Connect your devices'}</h1></div><div className="topbar-actions"><span className="secure"><i /> {connected ? 'Connected' : status}</span>{connected && <button className="outline-button disconnect-button" onClick={disconnect}>Disconnect</button>}<button className="theme-toggle" onClick={toggleTheme} aria-label="Change color theme"><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button></div></header>
-      <section className={`room-banner ${soundWave ? 'sound-active' : ''}`}><div className="pulse-ring"><img src="/air-share-logo.svg" alt="" /></div><div className="room-copy"><span className="eyebrow">YOUR SECURE ROOM</span><h2>{roomCode || '------'}</h2><p>{status}</p></div>{qr && <img className="room-qr-image" src={qr} alt="Scan to join Air Share Pro room" />}<div className="room-actions"><button className="outline-button" onClick={() => navigator.clipboard?.writeText(roomCode)}><Icon name="copy" size={16} /> Copy PIN</button><button className="outline-button" onClick={() => emit(roomCode)}><Icon name="wave" size={16} /> Sound wave</button></div></section>
+      <section className={`room-banner ${soundWave ? 'sound-active' : ''}`}><div className="pulse-ring"><img src="/air-share-logo.svg" alt="" /></div><div className="room-copy"><span className="eyebrow">YOUR SECURE ROOM</span><h2>{roomCode || '------'}</h2><p>{status}</p></div>{qr && <img className="room-qr-image" src={qr} alt="Scan to join Air Share Pro room" />}<div className="room-actions"><button className="outline-button" onClick={() => createRoom(false)}>New room</button><button className="outline-button" onClick={() => navigator.clipboard?.writeText(roomCode)}><Icon name="copy" size={16} /> Copy PIN</button><button className="outline-button" onClick={() => emit(roomCode)}><Icon name="wave" size={16} /> Sound wave</button></div></section>
       {!connected && <JoinCard code={joinCode} setCode={setJoinCode} join={join} listen={listen} listening={listening} />}
       {connected && <section className="transfer-grid"><div className="upload-panel"><div className="section-heading"><div><span className="eyebrow">SEND FILE</span><h2>Drop files here</h2></div><span className="network-badge"><i /> Direct WebRTC</span></div><div className="dropzone" onClick={() => fileInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); sendFile(event.dataTransfer.files[0]) }}><div className="upload-icon"><Icon name="upload" size={27} /></div><strong>Choose a file or drag it here</strong><p>Encrypted direct transfer on any network</p><input ref={fileInput} hidden type="file" onChange={(event) => { sendFile(event.target.files[0]); event.target.value = '' }} /></div></div><div className="clipboard-panel"><div className="section-heading"><div><span className="eyebrow">QUICK SHARE</span><h2>Clipboard</h2></div><span className="live-dot"><i /> Live</span></div><textarea value={clipboard} onChange={(event) => sendClipboard(event.target.value)} /><small>Syncs instantly with this room</small></div></section>}
       {progress && <TransferProgress progress={progress} />}<History transfers={transfers} /><AirShareFooter />

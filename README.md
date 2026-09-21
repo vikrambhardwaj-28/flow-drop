@@ -36,3 +36,16 @@ The LAN address can change with the network. Find the current address with:
 ```bash
 ipconfig getifaddr en0 || ipconfig getifaddr en1
 ```
+
+## Reliable cross-network connections
+
+STUN alone cannot connect every Jio, Airtel, BSNL, or VI pairing: some carrier NATs block direct WebRTC paths. Configure a TURN service for a reliable relay fallback, especially in production. Add these build-time variables in the deployment environment:
+
+```bash
+VITE_SIGNALING_URL=wss://signal.your-domain.example
+VITE_TURN_URLS=turn:turn.your-domain.example:3478?transport=udp,turn:turn.your-domain.example:3478?transport=tcp,turns:turn.your-domain.example:443?transport=tcp
+VITE_TURN_USERNAME=replace-with-short-lived-username
+VITE_TURN_CREDENTIAL=replace-with-short-lived-credential
+```
+
+Use a TURN provider or a coturn server with TLS on port 443. The app first attempts a direct connection, then automatically relays through TURN when mobile networks cannot establish a direct path. Do not put permanent TURN credentials in a public client build; generate time-limited credentials from the signaling backend for production.
