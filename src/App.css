@@ -137,3 +137,27 @@ footer { gap: 24px; padding-top: 20px; border-top: 1px solid #e4e0d9; color: #aa
 	.footer-links { justify-content: center; }
 	.footer-credit { justify-self: center; }
 }
+
+/* Mobile layout: keep every control in the viewport without overlapping. */
+@media (max-width: 600px) {
+	body { overflow-x: hidden; }
+	.main-content, .topbar > div:first-child, .room-copy, .join-card, .upload-panel, .clipboard-panel { min-width: 0; }
+	.topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; }
+	.topbar h1 { font-size: clamp(24px, 7vw, 28px); line-height: 1.08; }
+	.topbar-actions .secure { display: none; }
+	.room-banner { grid-template-columns: 52px minmax(0, 1fr); min-height: 0; }
+	.room-copy { padding-right: 72px; }
+	.room-copy p { overflow-wrap: anywhere; }
+	.room-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.room-actions button { min-width: 0; padding-inline: 8px; }
+	.join-controls, .join-controls .dark-button, .join-controls .listen-button { min-width: 0; }
+	.history-table { overflow-x: auto; }
+	.airshare-footer, .footer-brand, .footer-links { max-width: 100%; }
+}
+
+@media (max-width: 380px) {
+	.sidebar { padding-inline: 10px; }
+	.brand > span:last-child { display: none; }
+	.room-actions { grid-template-columns: 1fr; }
+	.room-copy { padding-right: 68px; }
+}
