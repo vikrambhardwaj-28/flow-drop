@@ -127,12 +127,18 @@ function App() {
     const gain = context.createGain()
     oscillator.type = 'sine'
     oscillator.frequency.value = frequency
-    gain.gain.setValueAtTime(.42, context.currentTime)
-    gain.gain.exponentialRampToValueAtTime(.01, context.currentTime + .28)
-    oscillator.connect(gain).connect(context.destination)
+    const compressor = context.createDynamicsCompressor()
+    compressor.threshold.value = -20
+    compressor.knee.value = 8
+    compressor.ratio.value = 12
+    compressor.attack.value = .003
+    compressor.release.value = .18
+    gain.gain.setValueAtTime(.78, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(.03, context.currentTime + .36)
+    oscillator.connect(gain).connect(compressor).connect(context.destination)
     oscillator.start()
-    oscillator.stop(context.currentTime + .29)
-    await new Promise((resolve) => setTimeout(resolve, 370))
+    oscillator.stop(context.currentTime + .37)
+    await new Promise((resolve) => setTimeout(resolve, 470))
   }
   const emit = async (code) => {
     if (!window.AudioContext || !code) return
@@ -140,7 +146,11 @@ function App() {
     const context = new AudioContext()
     try {
       await context.resume()
-      for (const digit of code) await playTone(context, TONES[Number(digit)])
+      // Repeat the PIN once automatically: the receiving device accepts the first clean pass.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        for (const digit of code) await playTone(context, TONES[Number(digit)])
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 550))
+      }
     } finally {
       context.close()
       setSoundWave(false)
@@ -151,8 +161,8 @@ function App() {
     if (!navigator.mediaDevices?.getUserMedia) return setStatus('Microphone is not available')
     setListening(true); setStatus('Listening for the room PIN...')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const context = new AudioContext(); const analyser = context.createAnalyser(); analyser.fftSize = 2048; context.createMediaStreamSource(stream).connect(analyser); const data = new Uint8Array(analyser.frequencyBinCount); const found = []; let last = -1; let stable = 0
-      const scan = () => { analyser.getByteFrequencyData(data); const index = data.indexOf(Math.max(...data)); const frequency = index * context.sampleRate / analyser.fftSize; const digit = TONES.reduce((best, tone, i) => Math.abs(tone - frequency) < Math.abs(TONES[best] - frequency) ? i : best, 0); if (data[index] > 80 && Math.abs(TONES[digit] - frequency) < 70) { stable = digit === last ? stable + 1 : 1; last = digit; if (stable === 3 && found.length < 6) found.push(String(digit)) } else { stable = 0; last = -1 } if (found.length === 6) { const code = found.join(''); stream.getTracks().forEach((track) => track.stop()); context.close(); setListening(false); setJoinCode(code); setStatus(`PIN ${code} detected. Tap Join.`); return } audio.current.frame = requestAnimationFrame(scan) }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: true, echoCancellation: true, noiseSuppression: true } }); const context = new AudioContext(); const analyser = context.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = .12; context.createMediaStreamSource(stream).connect(analyser); const data = new Uint8Array(analyser.frequencyBinCount); const found = []; let last = -1; let stable = 0
+      const scan = () => { analyser.getByteFrequencyData(data); const index = data.indexOf(Math.max(...data)); const frequency = index * context.sampleRate / analyser.fftSize; const digit = TONES.reduce((best, tone, i) => Math.abs(tone - frequency) < Math.abs(TONES[best] - frequency) ? i : best, 0); if (data[index] > 45 && Math.abs(TONES[digit] - frequency) < 50) { stable = digit === last ? stable + 1 : 1; last = digit; if (stable === 5 && found.length < 6) found.push(String(digit)) } else { stable = 0; last = -1 } if (found.length === 6) { const code = found.join(''); stream.getTracks().forEach((track) => track.stop()); context.close(); setListening(false); setJoinCode(code); setStatus(`PIN ${code} detected. Tap Join.`); return } audio.current.frame = requestAnimationFrame(scan) }
       audio.current = { context, stream, frame: requestAnimationFrame(scan) }
     } catch { setListening(false); setStatus('Allow microphone access to listen for PIN') }
   }
