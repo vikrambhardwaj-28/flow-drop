@@ -3,7 +3,8 @@ import QRCode from 'qrcode'
 import './App.css'
 
 const CHUNK_SIZE = 64 * 1024
-const TONES = [1200, 1320, 1440, 1560, 1680, 1800, 1920, 2040, 2160, 2280]
+// Wider tone separation and longer beeps make PIN pairing easier to hear and detect.
+const TONES = [1100, 1280, 1460, 1640, 1820, 2000, 2180, 2360, 2540, 2720]
 const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
 const makeCode = () => String(Math.floor(100000 + Math.random() * 900000))
 const extension = (name) => name.split('.').pop()?.toLowerCase() || 'file'
@@ -107,7 +108,18 @@ function App() {
     return () => { channel.current?.close(); peer.current?.close(); socket.current?.close(); audio.current.stream?.getTracks().forEach((track) => track.stop()); audio.current.context?.close(); if (audio.current.frame) cancelAnimationFrame(audio.current.frame) }
   }, [])
 
-  const playTone = async (context, frequency) => { const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.frequency.value = frequency; gain.gain.value = .1; oscillator.connect(gain).connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .13); await new Promise((resolve) => setTimeout(resolve, 190)) }
+  const playTone = async (context, frequency) => {
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.value = frequency
+    gain.gain.setValueAtTime(.42, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(.01, context.currentTime + .28)
+    oscillator.connect(gain).connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + .29)
+    await new Promise((resolve) => setTimeout(resolve, 370))
+  }
   const emit = async (code) => {
     if (!window.AudioContext || !code) return
     setSoundWave(true)
@@ -126,7 +138,7 @@ function App() {
     setListening(true); setStatus('Listening for the room PIN...')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const context = new AudioContext(); const analyser = context.createAnalyser(); analyser.fftSize = 2048; context.createMediaStreamSource(stream).connect(analyser); const data = new Uint8Array(analyser.frequencyBinCount); const found = []; let last = -1; let stable = 0
-      const scan = () => { analyser.getByteFrequencyData(data); const index = data.indexOf(Math.max(...data)); const frequency = index * context.sampleRate / analyser.fftSize; const digit = TONES.reduce((best, tone, i) => Math.abs(tone - frequency) < Math.abs(TONES[best] - frequency) ? i : best, 0); if (data[index] > 100 && Math.abs(TONES[digit] - frequency) < 100) { stable = digit === last ? stable + 1 : 1; last = digit; if (stable === 2 && found.length < 6) found.push(String(digit)) } else { stable = 0; last = -1 } if (found.length === 6) { const code = found.join(''); stream.getTracks().forEach((track) => track.stop()); context.close(); setListening(false); setJoinCode(code); setStatus(`PIN ${code} detected. Tap Join.`); return } audio.current.frame = requestAnimationFrame(scan) }
+      const scan = () => { analyser.getByteFrequencyData(data); const index = data.indexOf(Math.max(...data)); const frequency = index * context.sampleRate / analyser.fftSize; const digit = TONES.reduce((best, tone, i) => Math.abs(tone - frequency) < Math.abs(TONES[best] - frequency) ? i : best, 0); if (data[index] > 80 && Math.abs(TONES[digit] - frequency) < 70) { stable = digit === last ? stable + 1 : 1; last = digit; if (stable === 3 && found.length < 6) found.push(String(digit)) } else { stable = 0; last = -1 } if (found.length === 6) { const code = found.join(''); stream.getTracks().forEach((track) => track.stop()); context.close(); setListening(false); setJoinCode(code); setStatus(`PIN ${code} detected. Tap Join.`); return } audio.current.frame = requestAnimationFrame(scan) }
       audio.current = { context, stream, frame: requestAnimationFrame(scan) }
     } catch { setListening(false); setStatus('Allow microphone access to listen for PIN') }
   }
