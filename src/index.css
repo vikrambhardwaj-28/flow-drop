@@ -28,3 +28,15 @@ button { cursor: pointer; }
 .profile-option.active { color: #fff; background: linear-gradient(135deg, rgba(109,124,255,.95), rgba(79,200,205,.86)); box-shadow: 0 4px 12px rgba(81,122,255,.3); }
 .theme-light .profile-options { background: rgba(255,255,255,.35); }.theme-light .profile-option.active { color: #fff; }
 @media (max-width: 640px) { .transfer-profiles { grid-template-columns: 1fr; }.profile-options { width: 100%; }.profile-option { flex: 1; } }
+
+.transfer-controls { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
+.transfer-control { min-height: 34px; padding: 0 14px; border: 1px solid rgba(255,255,255,.22); border-radius: 10px; color: var(--ink); background: rgba(255,255,255,.08); font-size: 11px; font-weight: 800; }
+.transfer-control.pause { background: linear-gradient(135deg, rgba(91,119,255,.78), rgba(80,192,205,.68)); box-shadow: 0 5px 16px rgba(82,121,255,.2); }
+.transfer-control.cancel { color: #ffd8e0; border-color: rgba(255,145,166,.35); background: rgba(157,45,72,.22); }
+.theme-light .transfer-control.cancel { color: #9c2344; background: rgba(255,229,235,.72); }
+
+.table-head, .table-row { grid-template-columns: minmax(180px,2fr) .65fr .9fr .7fr auto !important; }
+.history-download { min-height: 30px; padding: 0 10px; border: 1px solid rgba(129,159,255,.34); border-radius: 9px; color: #e3e9ff; background: rgba(105,128,255,.16); font-size: 10px; font-weight: 800; }
+.history-download:hover { background: rgba(105,128,255,.31); box-shadow: 0 4px 14px rgba(102,126,255,.2); }
+.theme-light .history-download { color: #304a97; background: rgba(224,232,255,.70); }
+@media (max-width: 640px) { .table-head, .table-row { min-width: 650px !important; } }

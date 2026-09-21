@@ -60,6 +60,7 @@ function App() {
   const audio = useRef({ context: null, stream: null, frame: null })
   const roomTimer = useRef(null)
   const reconnectAttempts = useRef(0)
+  const sendingControl = useRef(null)
 
   const signal = (message) => socket.current?.send(JSON.stringify(message))
 
@@ -67,8 +68,8 @@ function App() {
     const file = receiving.current
     if (!file) return
     const url = URL.createObjectURL(new Blob(file.chunks, { type: file.mime || 'application/octet-stream' }))
-    const link = document.createElement('a'); link.href = url; link.download = file.name; link.click(); URL.revokeObjectURL(url)
-    setTransfers((items) => [{ name: file.name, size: bytes(file.size), time: clock(), direction: 'Received', type: extension(file.name) }, ...items])
+    const link = document.createElement('a'); link.href = url; link.download = file.name; link.click()
+    setTransfers((items) => [{ name: file.name, size: bytes(file.size), time: clock(), direction: 'Received', type: extension(file.name), url }, ...items])
     receiving.current = null; setProgress(null)
   }
 
@@ -82,6 +83,7 @@ function App() {
         if (message.type === 'clipboard') setClipboard(message.text)
         if (message.type === 'file-meta') { receiving.current = { ...message, chunks: [], received: 0, started: performance.now() }; setProgress({ name: message.name, percent: 0, direction: 'receiving', speed: 'starting', eta: 'calculating...' }) }
         if (message.type === 'file-end') finishReceive()
+        if (message.type === 'file-cancel') { receiving.current = null; setProgress(null); setStatus('Incoming transfer was cancelled') }
         return
       }
       const file = receiving.current
@@ -228,21 +230,53 @@ function App() {
   }
 
   const sendFile = async (file) => {
-    if (!file || channel.current?.readyState !== 'open') return setStatus('Connect a device before sending')
+    if (!file || channel.current?.readyState !== 'open') { setStatus('Connect a device before sending'); return false }
+    if (sendingControl.current) { setStatus('A transfer is already in progress'); return false }
     const chunkSize = CHUNK_SIZES[transferProfile]
+    const control = { paused: false, cancelled: false, resume: null }
+    sendingControl.current = control
     const started = performance.now(); setProgress({ name: file.name, percent: 0, direction: 'sending', speed: 'starting', eta: 'calculating...' }); channel.current.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, mime: file.type }))
-    for (let offset = 0; offset < file.size; offset += chunkSize) { while (channel.current.bufferedAmount > 1024 * 1024) await new Promise((resolve) => setTimeout(resolve, 20)); channel.current.send(await file.slice(offset, offset + chunkSize).arrayBuffer()); const sent = Math.min(offset + chunkSize, file.size); const speed = sent / Math.max((performance.now() - started) / 1000, .1); setProgress({ name: file.name, percent: Math.round(sent / file.size * 100), direction: 'sending', speed: `${bytes(speed)}/s`, eta: duration((file.size - sent) / speed) }) }
-    channel.current.send(JSON.stringify({ type: 'file-end' })); setTransfers((items) => [{ name: file.name, size: bytes(file.size), time: clock(), direction: 'Sent', type: extension(file.name) }, ...items]); setProgress(null)
+    for (let offset = 0; offset < file.size; offset += chunkSize) {
+      while (control.paused && !control.cancelled) await new Promise((resolve) => { control.resume = resolve })
+      if (control.cancelled) break
+      while (channel.current.bufferedAmount > 1024 * 1024) await new Promise((resolve) => setTimeout(resolve, 20))
+      if (control.cancelled) break
+      channel.current.send(await file.slice(offset, offset + chunkSize).arrayBuffer()); const sent = Math.min(offset + chunkSize, file.size); const speed = sent / Math.max((performance.now() - started) / 1000, .1); setProgress({ name: file.name, percent: Math.round(sent / file.size * 100), direction: 'sending', speed: `${bytes(speed)}/s`, eta: duration((file.size - sent) / speed), paused: false })
+    }
+    if (control.cancelled) { sendingControl.current = null; setProgress(null); return false }
+    channel.current.send(JSON.stringify({ type: 'file-end' })); setTransfers((items) => [{ name: file.name, size: bytes(file.size), time: clock(), direction: 'Sent', type: extension(file.name), url: URL.createObjectURL(file) }, ...items]); sendingControl.current = null; setProgress(null); return true
   }
 
   const sendFiles = async (files) => {
     const batch = Array.from(files || []).filter(Boolean)
     if (!batch.length) return
+    let completed = 0
     for (let index = 0; index < batch.length; index += 1) {
       if (batch.length > 1) setStatus(`Sending ${index + 1} of ${batch.length} files…`)
-      await sendFile(batch[index])
+      if (!await sendFile(batch[index])) break
+      completed += 1
     }
-    if (batch.length > 1 && channel.current?.readyState === 'open') setStatus(`${batch.length} files sent securely`)
+    if (batch.length > 1 && completed === batch.length && channel.current?.readyState === 'open') setStatus(`${batch.length} files sent securely`)
+  }
+
+  const toggleTransferPause = () => {
+    const control = sendingControl.current
+    if (!control) return
+    control.paused = !control.paused
+    if (!control.paused) { control.resume?.(); control.resume = null }
+    setProgress((current) => current ? { ...current, paused: control.paused } : current)
+    setStatus(control.paused ? 'Transfer paused' : 'Transfer resumed')
+  }
+  const cancelTransfer = () => {
+    const control = sendingControl.current
+    if (!control) return
+    control.cancelled = true; control.paused = false; control.resume?.(); control.resume = null
+    if (channel.current?.readyState === 'open') channel.current.send(JSON.stringify({ type: 'file-cancel' }))
+    setStatus('Transfer cancelled')
+  }
+  const downloadTransfer = (file) => {
+    if (!file.url) return
+    const link = document.createElement('a'); link.href = file.url; link.download = file.name; link.click()
   }
 
   const sendClipboard = (text) => { setClipboard(text); if (channel.current?.readyState === 'open') channel.current.send(JSON.stringify({ type: 'clipboard', text })) }
@@ -263,15 +297,15 @@ function App() {
       <section className={`room-banner ${soundWave ? 'sound-active' : ''}`}><div className="pulse-ring"><img src="/air-share-logo.svg" alt="" /></div><div className="room-copy"><span className="eyebrow">YOUR SECURE ROOM</span><h2>{roomCode || '------'}</h2><p>{status}</p></div>{qr && <img className="room-qr-image" src={qr} alt="Scan to join Air Share Pro room" />}<div className="room-actions"><button className="outline-button" onClick={() => createRoom(false)}>New room</button><button className="outline-button" onClick={() => navigator.clipboard?.writeText(roomCode)}><Icon name="copy" size={16} /> Copy PIN</button><button className="outline-button" onClick={() => emit(roomCode)}><Icon name="wave" size={16} /> Sound wave</button></div></section>
       {!connected && <JoinCard code={joinCode} setCode={setJoinCode} join={join} listen={listen} listening={listening} />}
       {connected && <section className="transfer-grid"><div className="upload-panel"><div className="section-heading"><div><span className="eyebrow">SEND FILE</span><h2>Drop files here</h2></div><span className="network-badge"><i /> Direct WebRTC</span></div><div className="dropzone" onClick={() => fileInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); sendFiles(event.dataTransfer.files) }}><div className="upload-icon"><Icon name="upload" size={27} /></div><strong>Choose files or drag them here</strong><p>Encrypted direct transfer on any network</p><input ref={fileInput} hidden multiple type="file" onChange={(event) => { sendFiles(event.target.files); event.target.value = '' }} /></div><TransferProfiles profile={transferProfile} setProfile={setTransferProfile} /></div><div className="clipboard-panel"><div className="section-heading"><div><span className="eyebrow">QUICK SHARE</span><h2>Clipboard</h2></div><span className="live-dot"><i /> Live</span></div><textarea value={clipboard} onChange={(event) => sendClipboard(event.target.value)} /><small>Syncs instantly with this room</small></div></section>}
-      {progress && <TransferProgress progress={progress} />}<History transfers={transfers} /><AirShareFooter />
+      {progress && <TransferProgress progress={progress} togglePause={toggleTransferPause} cancel={cancelTransfer} />}<History transfers={transfers} download={downloadTransfer} /><AirShareFooter />
     </main>
   </div>
 }
 
 function TransferProfiles({ profile, setProfile }) { return <div className="transfer-profiles"><div><span className="eyebrow">TRANSFER ENGINE</span><strong>Smart transfer profile</strong></div><div className="profile-options" role="group" aria-label="Transfer profile">{[['eco', 'Eco'], ['balanced', 'Balanced'], ['turbo', 'Turbo']].map(([value, label]) => <button key={value} className={profile === value ? 'profile-option active' : 'profile-option'} onClick={() => setProfile(value)}>{label}</button>)}</div><small>{profile === 'eco' ? 'Smaller packets for unstable connections' : profile === 'turbo' ? 'Larger packets for fast, reliable networks' : 'Optimized for most networks'}</small></div> }
 function JoinCard({ code, setCode, join, listen, listening }) { return <section className="join-card"><div><span className="eyebrow">JOIN ANOTHER ROOM</span><h2>Enter a PIN or listen</h2><p>Use the 6-digit PIN from another Air Share Pro room.</p></div><div className="join-controls"><input aria-label="Room PIN" inputMode="numeric" maxLength="6" placeholder="000000" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} /><button className="dark-button" onClick={() => join()}>Join →</button><button className={`listen-button ${listening ? 'listening' : ''}`} onClick={listen}>{listening ? 'Listening...' : '◌ Listen for sound wave'}</button></div></section> }
-function TransferProgress({ progress }) { return <section className="transfer-progress"><div className="progress-top"><div><span className="eyebrow">{progress.direction.toUpperCase()}</span><strong>{progress.name}</strong></div><b>{progress.percent}%</b></div><div className="progress-track"><i style={{ width: `${progress.percent}%` }} /></div><div className="progress-meta"><span>{progress.speed}</span><span>{progress.eta}</span></div></section> }
-function History({ transfers }) { return <section className="history-section"><div className="section-heading"><div><span className="eyebrow">ROOM HISTORY</span><h2>Recent transfers</h2></div></div><div className="history-table"><div className="table-head"><span>FILE</span><span>SIZE</span><span>TIME</span><span>STATUS</span></div>{transfers.length === 0 && <div className="empty-history">No files shared in this room yet.</div>}{transfers.map((file, index) => <div className="table-row" key={`${file.name}-${index}`}><span className="file-name"><span className={`file-icon ${file.type}`}>{file.type.toUpperCase().slice(0, 3)}</span><strong>{file.name}</strong></span><span>{file.size}</span><span>{file.time}</span><span className="status"><i /> {file.direction}</span></div>)}</div></section> }
+function TransferProgress({ progress, togglePause, cancel }) { return <section className="transfer-progress"><div className="progress-top"><div><span className="eyebrow">{progress.paused ? 'PAUSED' : progress.direction.toUpperCase()}</span><strong>{progress.name}</strong></div><b>{progress.percent}%</b></div><div className="progress-track"><i style={{ width: `${progress.percent}%` }} /></div><div className="progress-meta"><span>{progress.paused ? 'Waiting for resume' : progress.speed}</span><span>{progress.eta}</span></div>{progress.direction === 'sending' && <div className="transfer-controls"><button className="transfer-control pause" onClick={togglePause}>{progress.paused ? 'Resume' : 'Pause'}</button><button className="transfer-control cancel" onClick={cancel}>Cancel</button></div>}</section> }
+function History({ transfers, download }) { return <section className="history-section"><div className="section-heading"><div><span className="eyebrow">ROOM HISTORY</span><h2>Recent transfers</h2></div></div><div className="history-table"><div className="table-head"><span>FILE</span><span>SIZE</span><span>TIME</span><span>STATUS</span><span>DOWNLOAD</span></div>{transfers.length === 0 && <div className="empty-history">No files shared in this room yet.</div>}{transfers.map((file, index) => <div className="table-row" key={`${file.name}-${index}`}><span className="file-name"><span className={`file-icon ${file.type}`}>{file.type.toUpperCase().slice(0, 3)}</span><strong>{file.name}</strong></span><span>{file.size}</span><span>{file.time}</span><span className="status"><i /> {file.direction}</span><button className="history-download" onClick={() => download(file)}>Download</button></div>)}</div></section> }
 
 function AirShareFooter() {
   return <footer className="airshare-footer"><div className="footer-brand"><img className="footer-logo" src="/air-share-logo.svg" alt="Air Share Pro logo" /><strong>Air Share Pro</strong><small>Fast, private peer-to-peer sharing.</small></div><a className="feedback-link" href="mailto:vikram.2872006@gmail.com?subject=Air%20Share%20Pro%20feedback">Feedback</a><div className="footer-links"><a href="https://www.instagram.com/vikrm_bhardwaj?igsh=OWh4ZHprbW5rNTZv" target="_blank" rel="noreferrer">Instagram</a><a href="https://www.facebook.com/share/196jZuggxg/" target="_blank" rel="noreferrer">Facebook</a><a href="https://github.com/vikrambhardwaj-28/flow-drop" target="_blank" rel="noreferrer">GitHub</a><a href="mailto:vikram.2872006@gmail.com">Email</a></div><div className="footer-credit">By Vikram Bhardwaj</div></footer>
