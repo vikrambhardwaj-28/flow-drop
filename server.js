@@ -7,19 +7,34 @@ import { WebSocketServer } from 'ws'
 const rooms = new Map()
 const port = Number(process.env.PORT || 8787)
 const publicDir = path.resolve('dist')
+const sourcePublicDir = path.resolve('public')
 const localKey = path.resolve('certs/localhost-key.pem')
 const localCert = path.resolve('certs/localhost.pem')
+const contentTypes = {
+  '.css': 'text/css',
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+}
+
 const serveApp = (request, response) => {
   const requestedPath = request.url === '/' ? '/index.html' : request.url.split('?')[0]
-  const filePath = path.join(publicDir, requestedPath)
-  const safePath = filePath.startsWith(publicDir) ? filePath : path.join(publicDir, 'index.html')
+  const staticPath = (directory) => {
+    const filePath = path.resolve(directory, `.${requestedPath}`)
+    return filePath.startsWith(`${directory}${path.sep}`) ? filePath : null
+  }
   const fallback = path.join(publicDir, 'index.html')
+  const safePath = [publicDir, sourcePublicDir]
+    .map(staticPath)
+    .find((filePath) => filePath && fs.existsSync(filePath)) || fallback
   fs.readFile(safePath, (error, content) => {
     if (error) return fs.readFile(fallback, (fallbackError, fallbackContent) => {
       if (fallbackError) return response.writeHead(404).end('Build not found. Run npm run build first.')
       response.writeHead(200, { 'Content-Type': 'text/html' }).end(fallbackContent)
     })
-    const type = safePath.endsWith('.js') ? 'text/javascript' : safePath.endsWith('.css') ? 'text/css' : 'text/html'
+    const type = contentTypes[path.extname(safePath)] || 'application/octet-stream'
     response.writeHead(200, { 'Content-Type': type }).end(content)
   })
 }
