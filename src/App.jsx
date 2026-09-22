@@ -10,12 +10,12 @@ const ICE = {
   // Direct ICE remains available, with Metered TCP/TLS relays for restrictive networks.
   iceServers: [
     { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
-    { urls: 'turn:standard.relay.metered.ca:80', username: '388ffdcd5daa239a4e1fbe3a', credential: 'Kwa0hmbl4CX4RW9a' },
+    { urls: 'turn:airsharepro1.metered.ca:80', username: '388ffdcd5daa239a4e1fbe3a', credential: 'Kwa0hmbl4CX4RW9a' },
     {
       urls: [
-        'turns:standard.relay.metered.ca:443?transport=tcp',
-        'turn:standard.relay.metered.ca:443?transport=tcp',
-        'turn:standard.relay.metered.ca:80?transport=tcp',
+        'turns:airsharepro1.metered.ca:443?transport=tcp',
+        'turn:airsharepro1.metered.ca:443?transport=tcp',
+        'turn:airsharepro1.metered.ca:80?transport=tcp',
       ],
       username: '388ffdcd5daa239a4e1fbe3a',
       credential: 'Kwa0hmbl4CX4RW9a',
