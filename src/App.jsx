@@ -197,11 +197,11 @@ function App() {
     compressor.attack.value = .003
     compressor.release.value = .18
     gain.gain.setValueAtTime(.78, context.currentTime)
-    gain.gain.exponentialRampToValueAtTime(.03, context.currentTime + .36)
+    gain.gain.exponentialRampToValueAtTime(.03, context.currentTime + .19)
     oscillator.connect(gain).connect(compressor).connect(context.destination)
     oscillator.start()
-    oscillator.stop(context.currentTime + .37)
-    await new Promise((resolve) => setTimeout(resolve, 470))
+    oscillator.stop(context.currentTime + .2)
+    await new Promise((resolve) => setTimeout(resolve, 260))
   }
   const emit = async (code) => {
     if (!window.AudioContext || !code) return
@@ -209,10 +209,10 @@ function App() {
     const context = new AudioContext()
     try {
       await context.resume()
-      // Repeat the PIN once automatically: the receiving device accepts the first clean pass.
+      // Short, distinct tones keep pairing quick while leaving a clean gap for decoding.
       for (let attempt = 0; attempt < 2; attempt += 1) {
         for (const digit of code) await playTone(context, TONES[Number(digit)])
-        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 550))
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 280))
       }
     } finally {
       context.close()
@@ -225,7 +225,7 @@ function App() {
     setListening(true); setStatus('Listening for the room PIN...')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: true, echoCancellation: true, noiseSuppression: true } }); const context = new AudioContext(); const analyser = context.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = .12; context.createMediaStreamSource(stream).connect(analyser); const data = new Uint8Array(analyser.frequencyBinCount); const found = []; let last = -1; let stable = 0
-      const scan = () => { analyser.getByteFrequencyData(data); const index = data.indexOf(Math.max(...data)); const frequency = index * context.sampleRate / analyser.fftSize; const digit = TONES.reduce((best, tone, i) => Math.abs(tone - frequency) < Math.abs(TONES[best] - frequency) ? i : best, 0); if (data[index] > 45 && Math.abs(TONES[digit] - frequency) < 50) { stable = digit === last ? stable + 1 : 1; last = digit; if (stable === 5 && found.length < 6) found.push(String(digit)) } else { stable = 0; last = -1 } if (found.length === 6) { const code = found.join(''); stream.getTracks().forEach((track) => track.stop()); context.close(); setListening(false); setJoinCode(code); setStatus(`PIN ${code} detected. Tap Join.`); return } audio.current.frame = requestAnimationFrame(scan) }
+      const scan = () => { analyser.getByteFrequencyData(data); const index = data.indexOf(Math.max(...data)); const frequency = index * context.sampleRate / analyser.fftSize; const digit = TONES.reduce((best, tone, i) => Math.abs(tone - frequency) < Math.abs(TONES[best] - frequency) ? i : best, 0); if (data[index] > 40 && Math.abs(TONES[digit] - frequency) < 60) { stable = digit === last ? stable + 1 : 1; last = digit; if (stable === 3 && found.length < 6) found.push(String(digit)) } else { stable = 0; last = -1 } if (found.length === 6) { const code = found.join(''); stream.getTracks().forEach((track) => track.stop()); context.close(); setListening(false); setJoinCode(code); setStatus(`PIN ${code} detected. Tap Join.`); return } audio.current.frame = requestAnimationFrame(scan) }
       audio.current = { context, stream, frame: requestAnimationFrame(scan) }
     } catch { setListening(false); setStatus('Allow microphone access to listen for PIN') }
   }
@@ -309,7 +309,7 @@ function TransferProgress({ progress, togglePause, cancel }) { return <section c
 function History({ transfers, download }) { return <section className="history-section"><div className="section-heading"><div><span className="eyebrow">ROOM HISTORY</span><h2>Recent transfers</h2></div></div><div className="history-table"><div className="table-head"><span>FILE</span><span>SIZE</span><span>TIME</span><span>STATUS</span><span>DOWNLOAD</span></div>{transfers.length === 0 && <div className="empty-history">No files shared in this room yet.</div>}{transfers.map((file, index) => <div className="table-row" key={`${file.name}-${index}`}><span className="file-name"><span className={`file-icon ${file.type}`}>{file.type.toUpperCase().slice(0, 3)}</span><strong>{file.name}</strong></span><span>{file.size}</span><span>{file.time}</span><span className="status"><i /> {file.direction}</span><button className="history-download" onClick={() => download(file)}>Download</button></div>)}</div></section> }
 
 function AirShareFooter() {
-  return <footer className="airshare-footer"><div className="footer-brand"><img className="footer-logo" src="/air-share-logo.svg" alt="Air Share Pro logo" /><strong>Air Share Pro</strong><small>Fast, private peer-to-peer sharing.</small></div><a className="feedback-link" href="mailto:vikram.2872006@gmail.com?subject=Air%20Share%20Pro%20feedback">Feedback</a><div className="footer-links"><a href="https://www.instagram.com/vikrm_bhardwaj?igsh=OWh4ZHprbW5rNTZv" target="_blank" rel="noreferrer">Instagram</a><a href="https://www.facebook.com/share/196jZuggxg/" target="_blank" rel="noreferrer">Facebook</a><a href="https://github.com/vikrambhardwaj-28/flow-drop" target="_blank" rel="noreferrer">GitHub</a><a href="mailto:vikram.2872006@gmail.com">Email</a></div><div className="footer-credit">By Vikram Bhardwaj</div></footer>
+  return <footer className="airshare-footer"><div className="footer-brand"><img className="footer-logo" src="/air-share-logo.svg" alt="Air Share Pro logo" /><strong>Air Share Pro</strong><small>Fast, private peer-to-peer sharing.</small></div><a className="feedback-link" href="mailto:vikram.2872006@gmail.com?subject=Air%20Share%20Pro%20feedback">Feedback</a><div className="footer-links"><a href="https://www.instagram.com/vikrm_bhardwaj?igsh=OWh4ZHprbW5rNTZv" target="_blank" rel="noreferrer">Instagram</a><a href="https://www.facebook.com/share/196jZuggxg/" target="_blank" rel="noreferrer">Facebook</a><a href="mailto:vikram.2872006@gmail.com">Email</a></div><div className="footer-credit">By Vikram Bhardwaj</div></footer>
 }
 
 export default App
