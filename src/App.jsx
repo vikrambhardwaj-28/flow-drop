@@ -6,17 +6,23 @@ const CHUNK_SIZES = { eco: 32 * 1024, balanced: 64 * 1024, turbo: 128 * 1024 }
 const ROOM_READY_TIMEOUT = 4000
 // Wider tone separation and longer beeps make PIN pairing easier to hear and detect.
 const TONES = [1100, 1280, 1460, 1640, 1820, 2000, 2180, 2360, 2540, 2720]
-const turnUrls = (import.meta.env.VITE_TURN_URLS || import.meta.env.VITE_TURN_URL || '')
-  .split(',')
-  .map((url) => url.trim())
-  .filter(Boolean)
 const ICE = {
-  // STUN finds the fastest direct route. TURN is the reliable fallback for carrier NAT.
+  // Direct ICE remains available, with Metered TCP/TLS relays for restrictive networks.
   iceServers: [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
-    ...(turnUrls.length ? [{ urls: turnUrls, username: import.meta.env.VITE_TURN_USERNAME, credential: import.meta.env.VITE_TURN_CREDENTIAL }] : []),
+    { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
+    { urls: 'turn:standard.relay.metered.ca:80', username: '388ffdcd5daa239a4e1fbe3a', credential: 'Kwa0hmbl4CX4RW9a' },
+    {
+      urls: [
+        'turns:standard.relay.metered.ca:443?transport=tcp',
+        'turn:standard.relay.metered.ca:443?transport=tcp',
+        'turn:standard.relay.metered.ca:80?transport=tcp',
+      ],
+      username: '388ffdcd5daa239a4e1fbe3a',
+      credential: 'Kwa0hmbl4CX4RW9a',
+    },
   ],
-  iceCandidatePoolSize: 6,
+  iceTransportPolicy: 'all',
+  iceCandidatePoolSize: 10,
 }
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || ''
 const iceConfigUrl = import.meta.env.VITE_ICE_CONFIG_URL || (signalingUrl ? `${signalingUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:')}/.well-known/air-share/ice` : '/.well-known/air-share/ice')
@@ -25,7 +31,7 @@ const getIceConfig = () => {
   if (!iceConfigPromise) iceConfigPromise = Promise.race([
     fetch(iceConfigUrl, { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('TURN unavailable')))
-      .then((config) => Array.isArray(config.iceServers) && config.iceServers.length ? { ...ICE, iceServers: config.iceServers } : ICE),
+      .then((config) => Array.isArray(config.iceServers) && config.iceServers.length ? { ...ICE, iceServers: [...ICE.iceServers, ...config.iceServers] } : ICE),
     new Promise((resolve) => setTimeout(() => resolve(ICE), 2000)),
   ]).catch(() => ICE)
   return iceConfigPromise
