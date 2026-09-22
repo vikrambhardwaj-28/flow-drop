@@ -7,35 +7,18 @@ const ROOM_READY_TIMEOUT = 4000
 // Wider tone separation and longer beeps make PIN pairing easier to hear and detect.
 const TONES = [1100, 1280, 1460, 1640, 1820, 2000, 2180, 2360, 2540, 2720]
 const ICE = {
-  // Direct ICE remains available, with Metered TCP/TLS relays for restrictive networks.
   iceServers: [
-    { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
-    { urls: 'turn:airsharepro1.metered.ca:80', username: '388ffdcd5daa239a4e1fbe3a', credential: 'Kwa0hmbl4CX4RW9a' },
-    {
-      urls: [
-        'turns:airsharepro1.metered.ca:443?transport=tcp',
-        'turn:airsharepro1.metered.ca:443?transport=tcp',
-        'turn:airsharepro1.metered.ca:80?transport=tcp',
-      ],
-      username: '388ffdcd5daa239a4e1fbe3a',
-      credential: 'Kwa0hmbl4CX4RW9a',
-    },
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:global.relay.metered.ca:80', username: '388ffdcd5daa239a4e1fbe3a', credential: 'Kwa0hmbI4CX4RW9a' },
+    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: '388ffdcd5daa239a4e1fbe3a', credential: 'Kwa0hmbI4CX4RW9a' },
+    { urls: 'turn:global.relay.metered.ca:443', username: '388ffdcd5daa239a4e1fbe3a', credential: 'Kwa0hmbI4CX4RW9a' },
+    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: '388ffdcd5daa239a4e1fbe3a', credential: 'Kwa0hmbI4CX4RW9a' },
   ],
   iceTransportPolicy: 'all',
   iceCandidatePoolSize: 10,
 }
 const signalingUrl = import.meta.env.VITE_SIGNALING_URL || ''
-const iceConfigUrl = import.meta.env.VITE_ICE_CONFIG_URL || (signalingUrl ? `${signalingUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:')}/.well-known/air-share/ice` : '/.well-known/air-share/ice')
-let iceConfigPromise
-const getIceConfig = () => {
-  if (!iceConfigPromise) iceConfigPromise = Promise.race([
-    fetch(iceConfigUrl, { cache: 'no-store' })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error('TURN unavailable')))
-      .then((config) => Array.isArray(config.iceServers) && config.iceServers.length ? { ...ICE, iceServers: [...ICE.iceServers, ...config.iceServers] } : ICE),
-    new Promise((resolve) => setTimeout(() => resolve(ICE), 2000)),
-  ]).catch(() => ICE)
-  return iceConfigPromise
-}
+const getIceConfig = () => ICE
 const makeCode = () => String(Math.floor(100000 + Math.random() * 900000))
 const extension = (name) => name.split('.').pop()?.toLowerCase() || 'file'
 const bytes = (size) => size < 1048576 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1048576).toFixed(1)} MB`
