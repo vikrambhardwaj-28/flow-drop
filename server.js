@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { WebSocketServer } from 'ws'
 
 const rooms = new Map()
@@ -10,6 +11,9 @@ const publicDir = path.resolve('dist')
 const sourcePublicDir = path.resolve('public')
 const localKey = path.resolve('certs/localhost-key.pem')
 const localCert = path.resolve('certs/localhost.pem')
+const turnUrls = (process.env.TURN_URLS || '').split(',').map((url) => url.trim()).filter(Boolean)
+const turnSharedSecret = process.env.TURN_SHARED_SECRET || ''
+const turnCredentialTtl = Math.min(Math.max(Number(process.env.TURN_TTL_SECONDS || 3600), 300), 86400)
 const contentTypes = {
   '.css': 'text/css',
   '.html': 'text/html',
@@ -24,6 +28,17 @@ const contentTypes = {
 }
 
 const serveApp = (request, response) => {
+  if (request.url?.split('?')[0] === '/.well-known/air-share/ice') {
+    response.setHeader('Access-Control-Allow-Origin', '*')
+    response.setHeader('Cache-Control', 'no-store')
+    if (!turnUrls.length || !turnSharedSecret) return response.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'TURN relay is not configured' }))
+    const username = `${Math.floor(Date.now() / 1000) + turnCredentialTtl}:air-share`
+    const credential = crypto.createHmac('sha1', turnSharedSecret).update(username).digest('base64')
+    return response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ iceServers: [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+      { urls: turnUrls, username, credential },
+    ] }))
+  }
   const requestedPath = request.url === '/' ? '/index.html' : request.url.split('?')[0]
   const staticPath = (directory) => {
     const filePath = path.resolve(directory, `.${requestedPath}`)

@@ -18,6 +18,18 @@ const ICE = {
   ],
   iceCandidatePoolSize: 6,
 }
+const signalingUrl = import.meta.env.VITE_SIGNALING_URL || ''
+const iceConfigUrl = import.meta.env.VITE_ICE_CONFIG_URL || (signalingUrl ? `${signalingUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:')}/.well-known/air-share/ice` : '/.well-known/air-share/ice')
+let iceConfigPromise
+const getIceConfig = () => {
+  if (!iceConfigPromise) iceConfigPromise = Promise.race([
+    fetch(iceConfigUrl, { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('TURN unavailable')))
+      .then((config) => Array.isArray(config.iceServers) && config.iceServers.length ? { ...ICE, iceServers: config.iceServers } : ICE),
+    new Promise((resolve) => setTimeout(() => resolve(ICE), 2000)),
+  ]).catch(() => ICE)
+  return iceConfigPromise
+}
 const makeCode = () => String(Math.floor(100000 + Math.random() * 900000))
 const extension = (name) => name.split('.').pop()?.toLowerCase() || 'file'
 const bytes = (size) => size < 1048576 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1048576).toFixed(1)} MB`
@@ -100,8 +112,8 @@ function App() {
     await Promise.all(candidates.map((candidate) => connection.addIceCandidate(candidate).catch(() => {})))
   }
 
-  const makePeer = (host) => {
-    const connection = new RTCPeerConnection(ICE)
+  const makePeer = async (host) => {
+    const connection = new RTCPeerConnection(await getIceConfig())
     connection.onicecandidate = (event) => event.candidate && signal({ type: 'candidate', candidate: event.candidate })
     connection.onconnectionstatechange = () => {
       if (connection.connectionState === 'connecting') setStatus('Connecting securely…')
@@ -123,7 +135,7 @@ function App() {
     setStatus(host ? 'Creating your private room...' : 'Joining room...')
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const port = window.location.port === '5173' ? ':8787' : ''
-    const endpoint = import.meta.env.VITE_SIGNALING_URL || `${protocol}://${window.location.hostname}${port}`
+    const endpoint = signalingUrl || `${protocol}://${window.location.hostname}${port}`
     const connection = new WebSocket(endpoint)
     socket.current = connection
     connection.onopen = () => signal({ type: 'room', room: code, host })
@@ -135,8 +147,8 @@ function App() {
         setStatus(host ? 'Room ready. Share the PIN or QR.' : 'Waiting for the other device...')
         return
       }
-      if (message.type === 'peer-joined' && host) { const rtc = peer.current || makePeer(true); const offer = await rtc.createOffer(); await rtc.setLocalDescription(offer); signal({ type: 'offer', description: rtc.localDescription }) }
-      if (message.type === 'offer' && !host) { const rtc = peer.current || makePeer(false); await rtc.setRemoteDescription(message.description); await addPendingCandidates(rtc); const answer = await rtc.createAnswer(); await rtc.setLocalDescription(answer); signal({ type: 'answer', description: rtc.localDescription }) }
+      if (message.type === 'peer-joined' && host) { const rtc = peer.current || await makePeer(true); const offer = await rtc.createOffer(); await rtc.setLocalDescription(offer); signal({ type: 'offer', description: rtc.localDescription }) }
+      if (message.type === 'offer' && !host) { const rtc = peer.current || await makePeer(false); await rtc.setRemoteDescription(message.description); await addPendingCandidates(rtc); const answer = await rtc.createAnswer(); await rtc.setLocalDescription(answer); signal({ type: 'answer', description: rtc.localDescription }) }
       if (message.type === 'answer' && host && peer.current) { await peer.current.setRemoteDescription(message.description); await addPendingCandidates(peer.current) }
       if (message.type === 'candidate') {
         if (peer.current?.remoteDescription) await peer.current.addIceCandidate(message.candidate).catch(() => {})
