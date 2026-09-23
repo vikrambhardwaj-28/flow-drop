@@ -19,11 +19,13 @@ function Icon({ name, size = 20 }) {
 
 export default function App() {
   const [room, setRoom] = useState(''), [joinCode, setJoinCode] = useState(''), [myId, setMyId] = useState(''), [devices, setDevices] = useState([]), [selected, setSelected] = useState([])
-  const [status, setStatus] = useState('Creating a private room...'), [qr, setQr] = useState(''), [clipboard, setClipboard] = useState(''), [history, setHistory] = useState([]), [progress, setProgress] = useState(null), [profile, setProfile] = useState('balanced'), [theme, setTheme] = useState(() => localStorage.getItem('air-share-pro-theme') || 'dark')
-  const socket = useRef(), peers = useRef(new Map()), candidates = useRef(new Map()), receiving = useRef(new Map()), fileInput = useRef(), sending = useRef()
+  const [status, setStatus] = useState('Creating a private room...'), [qr, setQr] = useState(''), [clipboard, setClipboardValue] = useState(''), [history, setHistory] = useState([]), [progress, setProgress] = useState(null), [profile, setProfile] = useState('balanced'), [theme, setTheme] = useState(() => localStorage.getItem('air-share-pro-theme') || 'dark')
+  const socket = useRef(), peers = useRef(new Map()), candidates = useRef(new Map()), receiving = useRef(new Map()), fileInput = useRef(), sending = useRef(), clipboardTimer = useRef()
   const channels = () => [...peers.current.entries()].filter(([, p]) => p.channel?.readyState === 'open').map(([id]) => id)
   const online = channels()
-  const targets = selected.filter((id) => online.includes(id))
+  // No checkbox means room-wide sharing. Checking one or more devices switches to private mode.
+  const privateTargets = selected.filter((id) => online.includes(id))
+  const targets = privateTargets.length ? privateTargets : online
   const log = (entry) => setHistory((items) => [{ time: stamp(), ...entry }, ...items].slice(0, 100))
   const sendSignal = (message) => socket.current?.readyState === WebSocket.OPEN && socket.current.send(JSON.stringify(message))
   const syncDevices = (list) => { setDevices(list); setSelected((old) => old.filter((id) => list.some((d) => d.id === id))) }
@@ -35,7 +37,7 @@ export default function App() {
     channel.onclose = () => { setSelected((list) => list.filter((value) => value !== id)); setDevices((list) => [...list]) }
     channel.onmessage = ({ data }) => {
       if (typeof data === 'string') { let msg; try { msg = JSON.parse(data) } catch { return }
-        if (msg.type === 'clipboard') { setClipboard(msg.text); log({ kind: 'clipboard', name: 'Clipboard text', detail: `${msg.text.length} characters`, activity: `Received from ${id}`, type: 'clip' }) }
+        if (msg.type === 'clipboard') { setClipboardValue(msg.text); log({ kind: 'clipboard', name: 'Clipboard text', detail: `${msg.text.length} characters`, activity: `Received from ${id}`, type: 'clip' }) }
         if (msg.type === 'file-meta') { receiving.current.set(id, { ...msg, parts: [], got: 0, started: performance.now() }); setProgress({ name: msg.name, percent: 0, direction: 'receiving' }) }
         if (msg.type === 'file-end') finishFile(id)
         if (msg.type === 'file-cancel') { receiving.current.delete(id); setProgress(null); setStatus(`Transfer from ${id} cancelled`) }
@@ -69,9 +71,9 @@ export default function App() {
     ws.onerror = () => setStatus('Could not reach the room server. Start npm run server, then try again.')
     ws.onclose = ({ code }) => { if (code === 1013) setStatus('This room already has 6 devices. Create a new room or ask a device to leave.'); else if (code !== 1000) setStatus('Room server connection closed. Create a new room to retry.') }
   }
-  const createRoom = () => { const code = makeCode(); setRoom(code); QRCode.toDataURL(`${location.origin}/?join=${code}`, { width: 220, margin: 1 }, (_, url) => setQr(url || '')); connect(code, true) }
+  const createRoom = () => { const code = makeCode(); setRoom(code); setStatus('Room created — connecting your device…'); QRCode.toDataURL(`${location.origin}/?join=${code}`, { width: 220, margin: 1 }, (_, url) => setQr(url || '')); connect(code, true); const banner = document.querySelector('.room-banner'); banner?.classList.remove('room-created'); requestAnimationFrame(() => banner?.classList.add('room-created')) }
   const join = () => { const code = joinCode.replace(/\D/g, '').slice(0, 6); if (code.length !== 6) return setStatus('Enter a valid 6-digit PIN'); setRoom(code); connect(code, false) }
-  useEffect(() => { const code = new URLSearchParams(location.search).get('join'); if (code?.length === 6) { setJoinCode(code); setRoom(code); connect(code, false) } else createRoom(); return () => { cleanPeers(); socket.current?.close() } }, [])
+  useEffect(() => { const code = new URLSearchParams(location.search).get('join'); if (code?.length === 6) { setJoinCode(code); setRoom(code); connect(code, false) } else setStatus('Create a private room to start sharing'); return () => { clearTimeout(clipboardTimer.current); cleanPeers(); socket.current?.close() } }, [])
   const sendTo = (ids, value) => ids.forEach((id) => { const channel = peers.current.get(id)?.channel; if (channel?.readyState === 'open') channel.send(value) })
   const sendFile = async (file) => {
     if (!file || !targets.length) return setStatus('Select at least one connected device first')
@@ -80,7 +82,8 @@ export default function App() {
     for (let offset = 0; offset < file.size; offset += CHUNKS[profile]) { while (control.pause && !control.cancel) await new Promise((resolve) => { control.resume = resolve }); if (control.cancel) break; while (targets.some((id) => (peers.current.get(id)?.channel?.bufferedAmount || 0) > 1024 * 1024)) await new Promise((resolve) => setTimeout(resolve, 20)); sendTo(targets, await file.slice(offset, offset + CHUNKS[profile]).arrayBuffer()); setProgress({ name: file.name, percent: Math.round(Math.min(offset + CHUNKS[profile], file.size) / file.size * 100), direction: 'sending', paused: control.pause }) }
     if (control.cancel) { sending.current = null; setProgress(null); return }; sendTo(targets, JSON.stringify({ type: 'file-end' })); log({ kind: 'file', name: file.name, detail: bytes(file.size), activity: `Sent to ${targets.join(', ')}`, type: ext(file.name), url: URL.createObjectURL(file) }); sending.current = null; setProgress(null)
   }
-  const sendClipboard = () => { if (!targets.length) return setStatus('Select at least one connected device first'); sendTo(targets, JSON.stringify({ type: 'clipboard', text: clipboard })); log({ kind: 'clipboard', name: 'Clipboard text', detail: `${clipboard.length} characters`, activity: `Sent to ${targets.join(', ')}`, type: 'clip' }) }
+  const setClipboard = (text) => { setClipboardValue(text); clearTimeout(clipboardTimer.current); clipboardTimer.current = setTimeout(() => { if (!targets.length) return; sendTo(targets, JSON.stringify({ type: 'clipboard', text })); log({ kind: 'clipboard', name: 'Clipboard text', detail: `${text.length} characters`, activity: `Sent to ${targets.join(', ')}`, type: 'clip' }) }, 220) }
+  const sendClipboard = () => { if (targets.length) sendTo(targets, JSON.stringify({ type: 'clipboard', text: clipboard })) }
   const choose = (id) => setSelected((list) => list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
   const selectAll = () => setSelected(selected.length === online.length ? [] : online)
   const pause = () => { const item = sending.current; if (!item) return; item.pause = !item.pause; if (!item.pause) item.resume?.(); setProgress((p) => p && { ...p, paused: item.pause }) }
