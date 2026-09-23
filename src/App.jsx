@@ -73,7 +73,7 @@ export default function App() {
   }
   const createRoom = () => { const code = makeCode(); setRoom(code); setStatus('Room created — connecting your device…'); QRCode.toDataURL(`${location.origin}/?join=${code}`, { width: 220, margin: 1 }, (_, url) => setQr(url || '')); connect(code, true); const banner = document.querySelector('.room-banner'); banner?.classList.remove('room-created'); requestAnimationFrame(() => banner?.classList.add('room-created')) }
   const join = () => { const code = joinCode.replace(/\D/g, '').slice(0, 6); if (code.length !== 6) return setStatus('Enter a valid 6-digit PIN'); setRoom(code); connect(code, false) }
-  useEffect(() => { const code = new URLSearchParams(location.search).get('join'); if (code?.length === 6) { setJoinCode(code); setRoom(code); connect(code, false) } else setStatus('Create a private room to start sharing'); return () => { clearTimeout(clipboardTimer.current); cleanPeers(); socket.current?.close() } }, [])
+  useEffect(() => { const code = new URLSearchParams(location.search).get('join'); if (code?.length === 6) { setJoinCode(code); setRoom(code); connect(code, false) } else createRoom(); return () => { clearTimeout(clipboardTimer.current); cleanPeers(); socket.current?.close() } }, [])
   const sendTo = (ids, value) => ids.forEach((id) => { const channel = peers.current.get(id)?.channel; if (channel?.readyState === 'open') channel.send(value) })
   const sendFile = async (file) => {
     if (!file || !targets.length) return setStatus('Select at least one connected device first')
