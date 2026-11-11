@@ -297,3 +297,57 @@
     display: none;
   }
 }
+
+
+/* Mobile Warning & Camera Action */
+.mobile-os-warning {
+  margin-bottom: 20px;
+  padding: 18px 22px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255, 149, 0, 0.15), rgba(255, 77, 109, 0.12));
+  border: 1px solid rgba(255, 149, 0, 0.35);
+  backdrop-filter: blur(15px);
+}
+.warning-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #ffaa33;
+  margin-bottom: 6px;
+}
+.mobile-os-warning h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--ink);
+  font-weight: 700;
+}
+.mobile-os-warning p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.warning-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.camera-btn {
+  background: linear-gradient(135deg, #ff9f1c, #ff4081);
+  box-shadow: 0 8px 20px rgba(255, 159, 28, 0.3);
+}
+.mobile-camera-btn {
+  background: rgba(255, 159, 28, 0.14);
+  border-color: rgba(255, 159, 28, 0.4);
+  color: #ffaa33;
+}
+.mobile-camera-btn:hover {
+  background: rgba(255, 159, 28, 0.25);
+  border-color: rgba(255, 159, 28, 0.7);
+}
+.dual-prompt-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

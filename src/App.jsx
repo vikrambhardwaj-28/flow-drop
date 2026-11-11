@@ -23,6 +23,7 @@ const extension = (name) => name.split('.').pop()?.toLowerCase() || 'file'
 const bytes = (size) => size < 1048576 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1048576).toFixed(1)} MB`
 const clock = () => new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date())
 const duration = (seconds) => !Number.isFinite(seconds) || seconds <= 0 ? 'done' : seconds < 60 ? `${Math.ceil(seconds)}s left` : `${Math.floor(seconds / 60)}m left`
+const checkIsMobile = () => /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 
 function Icon({ name, size = 20 }) {
   const icons = {
@@ -36,6 +37,8 @@ function Icon({ name, size = 20 }) {
     moon: <path d="M20 15.4A8.5 8.5 0 0 1 8.6 4 8.5 8.5 0 1 0 20 15.4Z" />,
     screen: <><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></>,
     screenOff: <><path d="M1 1l22 22" /><path d="M4 4H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 .8-.4" /><path d="M8 21h8" /><path d="M12 17v4" /><path d="M9 4h12a1 1 0 0 1 1 1v10a1 1 0 0 1-.2.6" /></>,
+    camera: <><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" /></>,
+    flipCamera: <><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /></>,
     maximize: <><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></>,
     volume: <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></>,
     volumeX: <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></>,
@@ -58,9 +61,12 @@ function App() {
   const [progress, setProgress] = useState(null)
   const [transferProfile, setTransferProfile] = useState('balanced')
 
-  // Screen sharing state
+  // Screen / Camera sharing state
   const [localScreenStream, setLocalScreenStream] = useState(null)
   const [remoteScreenStream, setRemoteScreenStream] = useState(null)
+  const [streamType, setStreamType] = useState('screen') // 'screen' | 'camera'
+  const [cameraFacing, setCameraFacing] = useState('environment')
+  const [mobileOsError, setMobileOsError] = useState(false)
 
   const socket = useRef(null)
   const peer = useRef(null)
@@ -127,25 +133,52 @@ function App() {
       setStatus('Devices must be connected before sharing screen')
       return
     }
+
+    const isMobile = checkIsMobile()
+
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      alert('Screen sharing is not supported by your browser or operating system.')
+      if (isMobile) {
+        setMobileOsError(true)
+        setStatus('Mobile browser does not support screen capture. Try Camera Share.')
+        return
+      }
+      alert('Screen sharing is not supported by your browser.')
       return
     }
+
     try {
+      setMobileOsError(false)
       let stream
-      try {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always' },
-          audio: true,
-        })
-      } catch {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always' },
-        })
+
+      if (isMobile) {
+        // MOBILE OPTIMIZATION:
+        // Android Chrome throws "Operating system error" if audio: true or cursor constraints are passed.
+        // Pure { video: true } avoids Android OS MediaProjection restriction errors!
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: false,
+          })
+        } catch {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+        }
+      } else {
+        // Desktop browsers support system audio and cursor capture
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' },
+            audio: true,
+          })
+        } catch {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' },
+          })
+        }
       }
 
       localStreamRef.current = stream
       setLocalScreenStream(stream)
+      setStreamType('screen')
       setStatus('Sharing your screen...')
 
       const senders = []
@@ -153,7 +186,75 @@ function App() {
         const sender = peer.current.addTrack(track, stream)
         senders.push(sender)
         track.onended = () => {
-          stopScreenShare(true)
+          stopMediaShare(true)
+        }
+      })
+      screenSenders.current = senders
+
+      signal({ type: 'screen-start' })
+      if (channel.current?.readyState === 'open') {
+        try { channel.current.send(JSON.stringify({ type: 'screen-start' })) } catch {}
+      }
+
+      await renegotiate()
+    } catch (err) {
+      if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
+        const msg = String(err.message || '').toLowerCase()
+        if (msg.includes('operating system') || msg.includes('permission denied by system') || msg.includes('system error')) {
+          setMobileOsError(true)
+          setStatus('Mobile OS blocked screen capture. Try Camera Share or Flow Drop Android App.')
+          return
+        }
+        return // User cancelled
+      }
+      console.error('Error starting screen share:', err)
+      const errStr = String(err.message || err.name || '')
+      if (errStr.toLowerCase().includes('operating system') || isMobile) {
+        setMobileOsError(true)
+        setStatus('Mobile OS restricted browser screen capture. Use Camera Share or the Android App.')
+      } else {
+        setStatus(`Could not start screen share: ${errStr}`)
+      }
+    }
+  }
+
+  const startCameraShare = async (facingMode = 'environment') => {
+    if (!connected || !peer.current) {
+      setStatus('Devices must be connected before sharing camera')
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert('Camera access is not supported by this browser.')
+      return
+    }
+
+    try {
+      setMobileOsError(false)
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop())
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      })
+
+      localStreamRef.current = stream
+      setLocalScreenStream(stream)
+      setStreamType('camera')
+      setCameraFacing(facingMode)
+      setStatus(`Sharing camera view (${facingMode === 'environment' ? 'Rear' : 'Front'})...`)
+
+      const senders = []
+      stream.getTracks().forEach((track) => {
+        const sender = peer.current.addTrack(track, stream)
+        senders.push(sender)
+        track.onended = () => {
+          stopMediaShare(true)
         }
       })
       screenSenders.current = senders
@@ -166,12 +267,17 @@ function App() {
       await renegotiate()
     } catch (err) {
       if (err.name === 'NotAllowedError' || err.name === 'AbortError') return
-      console.error('Error starting screen share:', err)
-      setStatus(`Could not start screen share: ${err.message || err.name}`)
+      console.error('Error starting camera share:', err)
+      setStatus(`Camera share failed: ${err.message || err.name}`)
     }
   }
 
-  const stopScreenShare = async (notify = true) => {
+  const switchCamera = async () => {
+    const nextFacing = cameraFacing === 'environment' ? 'user' : 'environment'
+    await startCameraShare(nextFacing)
+  }
+
+  const stopMediaShare = async (notify = true) => {
     if (screenSenders.current.length > 0 && peer.current) {
       screenSenders.current.forEach((sender) => {
         try {
@@ -193,7 +299,7 @@ function App() {
         try { channel.current.send(JSON.stringify({ type: 'screen-stop' })) } catch {}
       }
       await renegotiate()
-      setStatus('Stopped sharing screen')
+      setStatus(`Stopped sharing ${streamType === 'camera' ? 'camera' : 'screen'}`)
     }
   }
 
@@ -202,7 +308,7 @@ function App() {
     dataChannel.onopen = () => { setConnected(true); setStatus('Connected directly via WebRTC') }
     dataChannel.onclose = () => {
       setConnected(false)
-      stopScreenShare(false)
+      stopMediaShare(false)
       setStatus('Device disconnected')
     }
     dataChannel.onmessage = (event) => {
@@ -223,7 +329,7 @@ function App() {
             remoteStreamRef.current = null
           }
           setRemoteScreenStream(null)
-          setStatus('Remote user stopped sharing screen')
+          setStatus('Remote user stopped sharing')
         }
         return
       }
@@ -249,7 +355,7 @@ function App() {
       if (connection.connectionState === 'failed') setStatus('Connection failed. Check TURN relay configuration, then try a new room.')
       if (connection.connectionState === 'disconnected' || connection.connectionState === 'closed') {
         setConnected(false)
-        stopScreenShare(false)
+        stopMediaShare(false)
       }
     }
 
@@ -376,7 +482,7 @@ function App() {
       }
 
       if (message.type === 'screen-start') {
-        setStatus('Remote user started sharing screen')
+        setStatus('Remote user started broadcasting')
         refreshRemoteStream()
         return
       }
@@ -387,7 +493,7 @@ function App() {
           remoteStreamRef.current = null
         }
         setRemoteScreenStream(null)
-        setStatus('Remote user stopped sharing screen')
+        setStatus('Remote user stopped broadcasting')
         return
       }
     }
@@ -467,7 +573,7 @@ function App() {
     else createRoom(false)
     return () => {
       clearTimeout(roomTimer.current)
-      stopScreenShare(false)
+      stopMediaShare(false)
       if (remoteStreamRef.current) {
         remoteStreamRef.current.getTracks().forEach((track) => track.stop())
         remoteStreamRef.current = null
@@ -546,7 +652,7 @@ function App() {
   const sendClipboard = (text) => { setClipboard(text); if (channel.current?.readyState === 'open') channel.current.send(JSON.stringify({ type: 'clipboard', text })) }
 
   const disconnect = () => {
-    stopScreenShare(false)
+    stopMediaShare(false)
     if (remoteStreamRef.current) {
       remoteStreamRef.current.getTracks().forEach((track) => track.stop())
       remoteStreamRef.current = null
@@ -564,6 +670,8 @@ function App() {
   const scrollTo = (id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
   }
+
+  const isMobile = checkIsMobile()
 
   return <div className={`app-shell theme-${theme}`}>
     <aside className="sidebar">
@@ -590,7 +698,7 @@ function App() {
                   <Icon name="screen" size={16} /> <span>Share Screen</span>
                 </button>
               ) : (
-                <button className="outline-button screenshare-top-btn active-sharing" onClick={() => stopScreenShare(true)} title="Stop sharing your screen">
+                <button className="outline-button screenshare-top-btn active-sharing" onClick={() => stopMediaShare(true)} title="Stop sharing your screen">
                   <Icon name="screenOff" size={16} /> <span>Stop Sharing</span>
                 </button>
               )}
@@ -607,14 +715,39 @@ function App() {
 
       {connected && (
         <div id="screenshare-section">
+          {mobileOsError && (
+            <div className="mobile-os-warning">
+              <div className="warning-content">
+                <span className="warning-badge">📱 MOBILE OS NOTICE</span>
+                <h3>Mobile Screen Capture Restriction</h3>
+                <p>Android/iOS security restricts full background screen capture directly inside standard mobile web browsers. You can stream your live Camera view or use the Flow Drop Android App!</p>
+                <div className="warning-buttons">
+                  <button className="start-screenshare-main-btn camera-btn" onClick={() => startCameraShare('environment')}>
+                    <Icon name="camera" size={16} />
+                    <span>Share Mobile Camera View</span>
+                  </button>
+                  <button className="outline-button" onClick={() => setMobileOsError(false)}>Dismiss</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {(!localScreenStream && !remoteScreenStream) ? (
-            <ScreenShareBanner onStart={startScreenShare} />
+            <ScreenShareBanner
+              onStart={startScreenShare}
+              onStartCamera={() => startCameraShare('environment')}
+              isMobile={isMobile}
+            />
           ) : (
             <ScreenShareStage
               localStream={localScreenStream}
               remoteStream={remoteScreenStream}
+              streamType={streamType}
               onStartLocal={startScreenShare}
-              onStopLocal={() => stopScreenShare(true)}
+              onStartCamera={() => startCameraShare('environment')}
+              onSwitchCamera={switchCamera}
+              onStopLocal={() => stopMediaShare(true)}
+              isMobile={isMobile}
             />
           )}
         </div>
@@ -647,37 +780,43 @@ function App() {
   </div>
 }
 
-function ScreenShareBanner({ onStart }) {
+function ScreenShareBanner({ onStart, onStartCamera, isMobile }) {
   return (
     <section className="screenshare-promo-card">
       <div className="promo-text">
-        <span className="eyebrow">REAL-TIME P2P SCREEN SHARE</span>
-        <h2>Screen Sharing</h2>
-        <p>Share your screen, an application window, or browser tab with the connected device in real-time. Both users can also share screens simultaneously.</p>
+        <span className="eyebrow">REAL-TIME P2P STREAMING</span>
+        <h2>Screen & Video Sharing</h2>
+        <p>Stream your display, app window, browser tab, or live camera to the connected device in real-time. Both devices can share simultaneously.</p>
       </div>
       <div className="promo-actions">
         <button className="start-screenshare-main-btn" onClick={onStart}>
           <Icon name="screen" size={18} />
           <span>Start Screen Share</span>
         </button>
+        {isMobile && (
+          <button className="outline-button mobile-camera-btn" onClick={onStartCamera} title="Stream mobile camera without browser OS errors">
+            <Icon name="camera" size={17} />
+            <span>Share Camera</span>
+          </button>
+        )}
       </div>
     </section>
   )
 }
 
-function ScreenShareStage({ localStream, remoteStream, onStartLocal, onStopLocal }) {
+function ScreenShareStage({ localStream, remoteStream, streamType, onStartLocal, onStartCamera, onSwitchCamera, onStopLocal, isMobile }) {
   const isBothSharing = Boolean(localStream && remoteStream)
 
   return (
     <section className="screenshare-stage">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">P2P SCREEN SHARE</span>
-          <h2>{isBothSharing ? 'Dual Screen Share (Both Active)' : remoteStream ? 'Remote Screen Broadcast' : 'Your Screen Broadcast'}</h2>
+          <span className="eyebrow">P2P LIVE STREAM</span>
+          <h2>{isBothSharing ? 'Dual Stream (Both Active)' : remoteStream ? 'Remote Broadcast' : streamType === 'camera' ? 'Your Live Camera Stream' : 'Your Screen Broadcast'}</h2>
         </div>
         <div className="screenshare-status-badges">
           {remoteStream && <span className="live-broadcast-pill"><i /> Remote Live</span>}
-          {localStream && <span className="live-broadcast-pill local"><i /> You Sharing</span>}
+          {localStream && <span className="live-broadcast-pill local"><i /> {streamType === 'camera' ? 'Camera Live' : 'Screen Live'}</span>}
         </div>
       </div>
 
@@ -686,16 +825,29 @@ function ScreenShareStage({ localStream, remoteStream, onStartLocal, onStopLocal
           <RemoteScreenCard stream={remoteStream} isBothSharing={isBothSharing} />
         )}
         {localStream && (
-          <LocalScreenCard stream={localStream} onStop={onStopLocal} isBothSharing={isBothSharing} />
+          <LocalScreenCard
+            stream={localStream}
+            streamType={streamType}
+            onStop={onStopLocal}
+            onSwitchCamera={onSwitchCamera}
+            isBothSharing={isBothSharing}
+          />
         )}
       </div>
 
       {!localStream && remoteStream && (
         <div className="screenshare-dual-prompt">
-          <span>Both users can share screens simultaneously! Want to share your screen too?</span>
-          <button className="outline-button" onClick={onStartLocal}>
-            <Icon name="screen" size={16} /> Share My Screen
-          </button>
+          <span>Both users can share simultaneously! Want to share your view too?</span>
+          <div className="dual-prompt-actions">
+            <button className="outline-button" onClick={onStartLocal}>
+              <Icon name="screen" size={16} /> Share Screen
+            </button>
+            {isMobile && (
+              <button className="outline-button" onClick={onStartCamera}>
+                <Icon name="camera" size={16} /> Share Camera
+              </button>
+            )}
+          </div>
         </div>
       )}
     </section>
@@ -760,7 +912,7 @@ function RemoteScreenCard({ stream, isBothSharing }) {
     <div className={`screenshare-card remote-card ${isBothSharing ? 'dual' : 'solo'}`} ref={containerRef}>
       <div className="card-topbar">
         <div className="card-title">
-          <span className="live-tag"><i /> Remote Screen</span>
+          <span className="live-tag"><i /> Remote Device View</span>
           {hasAudio && <span className="audio-tag">Audio</span>}
         </div>
         <div className="card-controls">
@@ -786,7 +938,7 @@ function RemoteScreenCard({ stream, isBothSharing }) {
   )
 }
 
-function LocalScreenCard({ stream, onStop, isBothSharing }) {
+function LocalScreenCard({ stream, streamType, onStop, onSwitchCamera, isBothSharing }) {
   const videoRef = useRef(null)
   const containerRef = useRef(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -811,13 +963,18 @@ function LocalScreenCard({ stream, onStop, isBothSharing }) {
     <div className={`screenshare-card local-card ${isBothSharing ? 'dual' : 'solo'}`} ref={containerRef}>
       <div className="card-topbar">
         <div className="card-title">
-          <span className="live-tag local"><i /> Your Screen (Sharing)</span>
+          <span className="live-tag local"><i /> {streamType === 'camera' ? 'Your Camera (Sharing)' : 'Your Screen (Sharing)'}</span>
         </div>
         <div className="card-controls">
+          {streamType === 'camera' && (
+            <button className="control-btn" onClick={onSwitchCamera} title="Flip Camera (Front/Rear)">
+              <Icon name="flipCamera" size={16} />
+            </button>
+          )}
           <button className="control-btn" onClick={toggleFullscreen} title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}>
             <Icon name="maximize" size={16} />
           </button>
-          <button className="stop-btn" onClick={onStop} title="Stop sharing screen">
+          <button className="stop-btn" onClick={onStop} title="Stop sharing">
             <Icon name="screenOff" size={15} /> <span>Stop Sharing</span>
           </button>
         </div>
