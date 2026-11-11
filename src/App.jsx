@@ -4,7 +4,6 @@ import './App.css'
 
 const CHUNK_SIZES = { eco: 32 * 1024, balanced: 64 * 1024, turbo: 128 * 1024 }
 const ROOM_READY_TIMEOUT = 4000
-// Wider tone separation and longer beeps make PIN pairing easier to hear and detect.
 const TONES = [1100, 1280, 1460, 1640, 1820, 2000, 2180, 2360, 2540, 2720]
 const ICE = {
   iceServers: [
@@ -35,6 +34,12 @@ function Icon({ name, size = 20 }) {
     upload: <><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 20h14" /></>,
     sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
     moon: <path d="M20 15.4A8.5 8.5 0 0 1 8.6 4 8.5 8.5 0 1 0 20 15.4Z" />,
+    screen: <><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></>,
+    screenOff: <><path d="M1 1l22 22" /><path d="M4 4H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 .8-.4" /><path d="M8 21h8" /><path d="M12 17v4" /><path d="M9 4h12a1 1 0 0 1 1 1v10a1 1 0 0 1-.2.6" /></>,
+    maximize: <><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></>,
+    volume: <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></>,
+    volumeX: <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></>,
+    pip: <><rect width="18" height="13" x="3" y="6" rx="2" /><rect width="7" height="5" x="12" y="12" rx="1" fill="currentColor" fillOpacity="0.3" /></>,
   }
   return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name]}</svg>
 }
@@ -52,6 +57,11 @@ function App() {
   const [transfers, setTransfers] = useState([])
   const [progress, setProgress] = useState(null)
   const [transferProfile, setTransferProfile] = useState('balanced')
+
+  // Screen sharing state
+  const [localScreenStream, setLocalScreenStream] = useState(null)
+  const [remoteScreenStream, setRemoteScreenStream] = useState(null)
+
   const socket = useRef(null)
   const peer = useRef(null)
   const channel = useRef(null)
@@ -62,6 +72,12 @@ function App() {
   const roomTimer = useRef(null)
   const reconnectAttempts = useRef(0)
   const sendingControl = useRef(null)
+
+  const isHostRef = useRef(false)
+  const makingOffer = useRef(false)
+  const localStreamRef = useRef(null)
+  const remoteStreamRef = useRef(null)
+  const screenSenders = useRef([])
 
   const signal = (message) => socket.current?.send(JSON.stringify(message))
 
@@ -74,17 +90,141 @@ function App() {
     receiving.current = null; setProgress(null)
   }
 
+  const refreshRemoteStream = () => {
+    if (!peer.current) return
+    const activeVideoTracks = peer.current.getReceivers()
+      .map((r) => r.track)
+      .filter((t) => t && t.kind === 'video' && t.readyState === 'live')
+
+    if (activeVideoTracks.length > 0) {
+      const activeTracks = peer.current.getReceivers()
+        .map((r) => r.track)
+        .filter((t) => t && t.readyState === 'live')
+      const stream = new MediaStream(activeTracks)
+      remoteStreamRef.current = stream
+      setRemoteScreenStream(stream)
+    }
+  }
+
+  const renegotiate = async () => {
+    const rtc = peer.current
+    if (!rtc) return
+    try {
+      makingOffer.current = true
+      const offer = await rtc.createOffer()
+      if (rtc.signalingState !== 'stable') return
+      await rtc.setLocalDescription(offer)
+      signal({ type: 'offer', description: rtc.localDescription })
+    } catch (err) {
+      console.error('Renegotiation failed:', err)
+    } finally {
+      makingOffer.current = false
+    }
+  }
+
+  const startScreenShare = async () => {
+    if (!connected || !peer.current) {
+      setStatus('Devices must be connected before sharing screen')
+      return
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      alert('Screen sharing is not supported by your browser or operating system.')
+      return
+    }
+    try {
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: true,
+        })
+      } catch {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+        })
+      }
+
+      localStreamRef.current = stream
+      setLocalScreenStream(stream)
+      setStatus('Sharing your screen...')
+
+      const senders = []
+      stream.getTracks().forEach((track) => {
+        const sender = peer.current.addTrack(track, stream)
+        senders.push(sender)
+        track.onended = () => {
+          stopScreenShare(true)
+        }
+      })
+      screenSenders.current = senders
+
+      signal({ type: 'screen-start' })
+      if (channel.current?.readyState === 'open') {
+        try { channel.current.send(JSON.stringify({ type: 'screen-start' })) } catch {}
+      }
+
+      await renegotiate()
+    } catch (err) {
+      if (err.name === 'NotAllowedError' || err.name === 'AbortError') return
+      console.error('Error starting screen share:', err)
+      setStatus(`Could not start screen share: ${err.message || err.name}`)
+    }
+  }
+
+  const stopScreenShare = async (notify = true) => {
+    if (screenSenders.current.length > 0 && peer.current) {
+      screenSenders.current.forEach((sender) => {
+        try {
+          peer.current.removeTrack(sender)
+        } catch {}
+      })
+      screenSenders.current = []
+    }
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop())
+      localStreamRef.current = null
+    }
+    setLocalScreenStream(null)
+
+    if (notify) {
+      signal({ type: 'screen-stop' })
+      if (channel.current?.readyState === 'open') {
+        try { channel.current.send(JSON.stringify({ type: 'screen-stop' })) } catch {}
+      }
+      await renegotiate()
+      setStatus('Stopped sharing screen')
+    }
+  }
+
   const setupChannel = (dataChannel) => {
     dataChannel.binaryType = 'arraybuffer'
     dataChannel.onopen = () => { setConnected(true); setStatus('Connected directly via WebRTC') }
-    dataChannel.onclose = () => { setConnected(false); setStatus('Device disconnected') }
+    dataChannel.onclose = () => {
+      setConnected(false)
+      stopScreenShare(false)
+      setStatus('Device disconnected')
+    }
     dataChannel.onmessage = (event) => {
       if (typeof event.data === 'string') {
-        const message = JSON.parse(event.data)
+        let message
+        try {
+          message = JSON.parse(event.data)
+        } catch {
+          return
+        }
         if (message.type === 'clipboard') setClipboard(message.text)
         if (message.type === 'file-meta') { receiving.current = { ...message, chunks: [], received: 0, started: performance.now() }; setProgress({ name: message.name, percent: 0, direction: 'receiving', speed: 'starting', eta: 'calculating...' }) }
         if (message.type === 'file-end') finishReceive()
         if (message.type === 'file-cancel') { receiving.current = null; setProgress(null); setStatus('Incoming transfer was cancelled') }
+        if (message.type === 'screen-stop') {
+          if (remoteStreamRef.current) {
+            remoteStreamRef.current.getTracks().forEach((track) => track.stop())
+            remoteStreamRef.current = null
+          }
+          setRemoteScreenStream(null)
+          setStatus('Remote user stopped sharing screen')
+        }
         return
       }
       const file = receiving.current
@@ -107,7 +247,29 @@ function App() {
     connection.onconnectionstatechange = () => {
       if (connection.connectionState === 'connecting') setStatus('Connecting securely…')
       if (connection.connectionState === 'failed') setStatus('Connection failed. Check TURN relay configuration, then try a new room.')
+      if (connection.connectionState === 'disconnected' || connection.connectionState === 'closed') {
+        setConnected(false)
+        stopScreenShare(false)
+      }
     }
+
+    connection.ontrack = (event) => {
+      const incomingStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track])
+      remoteStreamRef.current = incomingStream
+      setRemoteScreenStream(incomingStream)
+
+      event.track.onended = () => {
+        const current = remoteStreamRef.current
+        if (!current || !current.getVideoTracks().some((t) => t.readyState === 'live')) {
+          if (remoteStreamRef.current) {
+            remoteStreamRef.current.getTracks().forEach((t) => t.stop())
+            remoteStreamRef.current = null
+          }
+          setRemoteScreenStream(null)
+        }
+      }
+    }
+
     if (host) setupChannel(connection.createDataChannel('air-share'))
     else connection.ondatachannel = (event) => setupChannel(event.channel)
     peer.current = connection
@@ -115,6 +277,7 @@ function App() {
   }
 
   const connect = (code, host) => {
+    isHostRef.current = host
     if (roomTimer.current) clearTimeout(roomTimer.current)
     socket.current?.close()
     peer.current?.close()
@@ -129,21 +292,106 @@ function App() {
     socket.current = connection
     connection.onopen = () => signal({ type: 'room', room: code, host })
     connection.onmessage = async (event) => {
-      const message = JSON.parse(event.data)
+      let message
+      try {
+        message = JSON.parse(event.data)
+      } catch {
+        return
+      }
+
       if (message.type === 'room-ready') {
         clearTimeout(roomTimer.current)
         reconnectAttempts.current = 0
         setStatus(host ? 'Room ready. Share the PIN or QR.' : 'Waiting for the other device...')
         return
       }
-      if (message.type === 'peer-joined' && host) { const rtc = peer.current || await makePeer(true); const offer = await rtc.createOffer(); await rtc.setLocalDescription(offer); signal({ type: 'offer', description: rtc.localDescription }) }
-      if (message.type === 'offer' && !host) { const rtc = peer.current || await makePeer(false); await rtc.setRemoteDescription(message.description); await addPendingCandidates(rtc); const answer = await rtc.createAnswer(); await rtc.setLocalDescription(answer); signal({ type: 'answer', description: rtc.localDescription }) }
-      if (message.type === 'answer' && host && peer.current) { await peer.current.setRemoteDescription(message.description); await addPendingCandidates(peer.current) }
+
+      if (message.type === 'peer-joined' && host) {
+        const rtc = peer.current || await makePeer(true)
+        try {
+          makingOffer.current = true
+          const offer = await rtc.createOffer()
+          await rtc.setLocalDescription(offer)
+          signal({ type: 'offer', description: rtc.localDescription })
+        } catch (err) {
+          console.error('Initial offer error:', err)
+        } finally {
+          makingOffer.current = false
+        }
+        return
+      }
+
+      if (message.type === 'offer' || (message.type === 'description' && message.description?.type === 'offer')) {
+        const desc = message.description || message
+        const rtc = peer.current || await makePeer(false)
+
+        const isPolite = !isHostRef.current
+        const offerCollision = makingOffer.current || rtc.signalingState !== 'stable'
+
+        if (offerCollision) {
+          if (!isPolite) {
+            console.log('Host (impolite) ignoring offer collision')
+            return
+          }
+          console.log('Guest (polite) rolling back offer')
+          try {
+            await rtc.setLocalDescription({ type: 'rollback' })
+          } catch {}
+        }
+
+        try {
+          await rtc.setRemoteDescription(desc)
+          await addPendingCandidates(rtc)
+          const answer = await rtc.createAnswer()
+          await rtc.setLocalDescription(answer)
+          signal({ type: 'answer', description: rtc.localDescription })
+          refreshRemoteStream()
+        } catch (err) {
+          console.error('Failed to handle offer:', err)
+        }
+        return
+      }
+
+      if (message.type === 'answer' || (message.type === 'description' && message.description?.type === 'answer')) {
+        const desc = message.description || message
+        if (peer.current && peer.current.signalingState === 'have-local-offer') {
+          try {
+            await peer.current.setRemoteDescription(desc)
+            await addPendingCandidates(peer.current)
+            refreshRemoteStream()
+          } catch (err) {
+            console.error('Failed to handle answer:', err)
+          }
+        }
+        return
+      }
+
       if (message.type === 'candidate') {
-        if (peer.current?.remoteDescription) await peer.current.addIceCandidate(message.candidate).catch(() => {})
-        else pendingCandidates.current.push(message.candidate)
+        if (peer.current?.remoteDescription) {
+          await peer.current.addIceCandidate(message.candidate).catch(() => {})
+        } else {
+          pendingCandidates.current.push(message.candidate)
+        }
+        return
+      }
+
+      if (message.type === 'screen-start') {
+        setStatus('Remote user started sharing screen')
+        refreshRemoteStream()
+        return
+      }
+
+      if (message.type === 'screen-stop') {
+        if (remoteStreamRef.current) {
+          remoteStreamRef.current.getTracks().forEach((track) => track.stop())
+          remoteStreamRef.current = null
+        }
+        setRemoteScreenStream(null)
+        setStatus('Remote user stopped sharing screen')
+        return
       }
     }
+
     connection.onerror = () => { if (socket.current === connection) setStatus('Could not reach the room server. Start npm run server, then try again.') }
     connection.onclose = (event) => {
       if (socket.current !== connection) return
@@ -159,6 +407,41 @@ function App() {
       connection.close()
       setTimeout(() => connect(code, host), 250)
     }, ROOM_READY_TIMEOUT)
+  }
+
+  const playTone = async (context, frequency) => {
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.value = frequency
+    const compressor = context.createDynamicsCompressor()
+    compressor.threshold.value = -20
+    compressor.knee.value = 8
+    compressor.ratio.value = 12
+    compressor.attack.value = .003
+    compressor.release.value = .18
+    gain.gain.setValueAtTime(.78, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(.03, context.currentTime + .19)
+    oscillator.connect(gain).connect(compressor).connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + .2)
+    await new Promise((resolve) => setTimeout(resolve, 260))
+  }
+
+  const emit = async (code) => {
+    if (!window.AudioContext || !code) return
+    setSoundWave(true)
+    const context = new AudioContext()
+    try {
+      await context.resume()
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        for (const digit of code) await playTone(context, TONES[Number(digit)])
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 280))
+      }
+    } finally {
+      context.close()
+      setSoundWave(false)
+    }
   }
 
   const createRoom = (wave) => {
@@ -182,43 +465,21 @@ function App() {
     const code = new URLSearchParams(window.location.search).get('join')
     if (code?.length === 6) join(code)
     else createRoom(false)
-    return () => { clearTimeout(roomTimer.current); channel.current?.close(); peer.current?.close(); socket.current?.close(); audio.current.stream?.getTracks().forEach((track) => track.stop()); audio.current.context?.close(); if (audio.current.frame) cancelAnimationFrame(audio.current.frame) }
-  }, [])
-
-  const playTone = async (context, frequency) => {
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    oscillator.type = 'sine'
-    oscillator.frequency.value = frequency
-    const compressor = context.createDynamicsCompressor()
-    compressor.threshold.value = -20
-    compressor.knee.value = 8
-    compressor.ratio.value = 12
-    compressor.attack.value = .003
-    compressor.release.value = .18
-    gain.gain.setValueAtTime(.78, context.currentTime)
-    gain.gain.exponentialRampToValueAtTime(.03, context.currentTime + .19)
-    oscillator.connect(gain).connect(compressor).connect(context.destination)
-    oscillator.start()
-    oscillator.stop(context.currentTime + .2)
-    await new Promise((resolve) => setTimeout(resolve, 260))
-  }
-  const emit = async (code) => {
-    if (!window.AudioContext || !code) return
-    setSoundWave(true)
-    const context = new AudioContext()
-    try {
-      await context.resume()
-      // Short, distinct tones keep pairing quick while leaving a clean gap for decoding.
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        for (const digit of code) await playTone(context, TONES[Number(digit)])
-        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 280))
+    return () => {
+      clearTimeout(roomTimer.current)
+      stopScreenShare(false)
+      if (remoteStreamRef.current) {
+        remoteStreamRef.current.getTracks().forEach((track) => track.stop())
+        remoteStreamRef.current = null
       }
-    } finally {
-      context.close()
-      setSoundWave(false)
+      channel.current?.close()
+      peer.current?.close()
+      socket.current?.close()
+      audio.current.stream?.getTracks().forEach((track) => track.stop())
+      audio.current.context?.close()
+      if (audio.current.frame) cancelAnimationFrame(audio.current.frame)
     }
-  }
+  }, [])
 
   const listen = async () => {
     if (!navigator.mediaDevices?.getUserMedia) return setStatus('Microphone is not available')
@@ -268,6 +529,7 @@ function App() {
     setProgress((current) => current ? { ...current, paused: control.paused } : current)
     setStatus(control.paused ? 'Transfer paused' : 'Transfer resumed')
   }
+
   const cancelTransfer = () => {
     const control = sendingControl.current
     if (!control) return
@@ -275,32 +537,296 @@ function App() {
     if (channel.current?.readyState === 'open') channel.current.send(JSON.stringify({ type: 'file-cancel' }))
     setStatus('Transfer cancelled')
   }
+
   const downloadTransfer = (file) => {
     if (!file.url) return
     const link = document.createElement('a'); link.href = file.url; link.download = file.name; link.click()
   }
 
   const sendClipboard = (text) => { setClipboard(text); if (channel.current?.readyState === 'open') channel.current.send(JSON.stringify({ type: 'clipboard', text })) }
-  const disconnect = () => { channel.current?.close(); peer.current?.close(); socket.current?.close(); setConnected(false); setStatus('Disconnected') }
+
+  const disconnect = () => {
+    stopScreenShare(false)
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((track) => track.stop())
+      remoteStreamRef.current = null
+    }
+    setRemoteScreenStream(null)
+    channel.current?.close()
+    peer.current?.close()
+    socket.current?.close()
+    setConnected(false)
+    setStatus('Disconnected')
+  }
+
   const toggleTheme = () => setTheme((value) => { const next = value === 'dark' ? 'light' : 'dark'; localStorage.setItem('air-share-pro-theme', next); return next })
+
+  const scrollTo = (id) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   return <div className={`app-shell theme-${theme}`}>
     <aside className="sidebar">
       <div className="brand"><img className="brand-logo" src="/air-share-logo.svg" alt="Air Share Pro logo" /><span>Air Share Pro</span></div>
       <nav>
-        <button disabled={!connected} className={connected ? 'nav-item active' : 'nav-item'}><Icon name="share" /> <span>Share</span></button>
-        <button disabled={!connected} className="nav-item"><Icon name="clipboard" /> <span>Clipboard</span></button>
-        <button className="nav-item active"><Icon name="history" /> <span>History</span></button>
+        <button disabled={!connected} className={connected ? 'nav-item active' : 'nav-item'} onClick={() => scrollTo('transfer-section')}><Icon name="share" /> <span>Files</span></button>
+        <button disabled={!connected} className="nav-item" onClick={() => scrollTo('screenshare-section')}>
+          <Icon name="screen" /> <span>Screen Share</span>
+          {(localScreenStream || remoteScreenStream) && <span className="nav-live-dot" />}
+        </button>
+        <button disabled={!connected} className="nav-item" onClick={() => scrollTo('clipboard-section')}><Icon name="clipboard" /> <span>Clipboard</span></button>
+        <button className="nav-item" onClick={() => scrollTo('history-section')}><Icon name="history" /> <span>History</span></button>
       </nav>
     </aside>
     <main className="main-content">
-        <header className="topbar"><div><span className="eyebrow">AIR SHARE PRO / PRIVATE ROOM</span><h1>{connected ? 'Ready to share' : 'Connect your devices'}</h1></div><div className="topbar-actions"><span className="secure"><i /> {connected ? 'Connected' : status}</span>{connected && <button className="outline-button disconnect-button" onClick={disconnect}>Disconnect</button>}<button className="theme-toggle" onClick={toggleTheme} aria-label="Change color theme"><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button></div></header>
+      <header className="topbar">
+        <div><span className="eyebrow">AIR SHARE PRO / PRIVATE ROOM</span><h1>{connected ? 'Ready to share' : 'Connect your devices'}</h1></div>
+        <div className="topbar-actions">
+          <span className="secure"><i /> {connected ? 'Connected' : status}</span>
+          {connected && (
+            <>
+              {!localScreenStream ? (
+                <button className="outline-button screenshare-top-btn" onClick={startScreenShare} title="Share your screen with the connected device">
+                  <Icon name="screen" size={16} /> <span>Share Screen</span>
+                </button>
+              ) : (
+                <button className="outline-button screenshare-top-btn active-sharing" onClick={() => stopScreenShare(true)} title="Stop sharing your screen">
+                  <Icon name="screenOff" size={16} /> <span>Stop Sharing</span>
+                </button>
+              )}
+              <button className="outline-button disconnect-button" onClick={disconnect}>Disconnect</button>
+            </>
+          )}
+          <button className="theme-toggle" onClick={toggleTheme} aria-label="Change color theme"><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
+        </div>
+      </header>
+
       <section className={`room-banner ${soundWave ? 'sound-active' : ''}`}><div className="pulse-ring"><img src="/air-share-logo.svg" alt="" /></div><div className="room-copy"><span className="eyebrow">YOUR SECURE ROOM</span><h2>{roomCode || '------'}</h2><p>{status}</p></div>{qr && <img className="room-qr-image" src={qr} alt="Scan to join Air Share Pro room" />}<div className="room-actions"><button className="outline-button" onClick={() => createRoom(false)}>New room</button><button className="outline-button" onClick={() => navigator.clipboard?.writeText(roomCode)}><Icon name="copy" size={16} /> Copy PIN</button><button className="outline-button" onClick={() => emit(roomCode)}><Icon name="wave" size={16} /> Sound wave</button></div></section>
+
       {!connected && <JoinCard code={joinCode} setCode={setJoinCode} join={join} listen={listen} listening={listening} />}
-      {connected && <section className="transfer-grid"><div className="upload-panel"><div className="section-heading"><div><span className="eyebrow">SEND FILE</span><h2>Drop files here</h2></div><span className="network-badge"><i /> Direct WebRTC</span></div><div className="dropzone" onClick={() => fileInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); sendFiles(event.dataTransfer.files) }}><div className="upload-icon"><Icon name="upload" size={27} /></div><strong>Choose files or drag them here</strong><p>Encrypted direct transfer on any network</p><input ref={fileInput} hidden multiple type="file" onChange={(event) => { sendFiles(event.target.files); event.target.value = '' }} /></div><TransferProfiles profile={transferProfile} setProfile={setTransferProfile} /></div><div className="clipboard-panel"><div className="section-heading"><div><span className="eyebrow">QUICK SHARE</span><h2>Clipboard</h2></div><span className="live-dot"><i /> Live</span></div><textarea value={clipboard} onChange={(event) => sendClipboard(event.target.value)} /><small>Syncs instantly with this room</small></div></section>}
-      {progress && <TransferProgress progress={progress} togglePause={toggleTransferPause} cancel={cancelTransfer} />}<History transfers={transfers} download={downloadTransfer} /><AirShareFooter />
+
+      {connected && (
+        <div id="screenshare-section">
+          {(!localScreenStream && !remoteScreenStream) ? (
+            <ScreenShareBanner onStart={startScreenShare} />
+          ) : (
+            <ScreenShareStage
+              localStream={localScreenStream}
+              remoteStream={remoteScreenStream}
+              onStartLocal={startScreenShare}
+              onStopLocal={() => stopScreenShare(true)}
+            />
+          )}
+        </div>
+      )}
+
+      {connected && (
+        <section className="transfer-grid" id="transfer-section">
+          <div className="upload-panel">
+            <div className="section-heading"><div><span className="eyebrow">SEND FILE</span><h2>Drop files here</h2></div><span className="network-badge"><i /> Direct WebRTC</span></div>
+            <div className="dropzone" id="file-dropzone" onClick={() => fileInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); sendFiles(event.dataTransfer.files) }}>
+              <div className="upload-icon"><Icon name="upload" size={27} /></div>
+              <strong>Choose files or drag them here</strong>
+              <p>Encrypted direct transfer on any network</p>
+              <input ref={fileInput} hidden multiple type="file" onChange={(event) => { sendFiles(event.target.files); event.target.value = '' }} />
+            </div>
+            <TransferProfiles profile={transferProfile} setProfile={setTransferProfile} />
+          </div>
+          <div className="clipboard-panel" id="clipboard-section">
+            <div className="section-heading"><div><span className="eyebrow">QUICK SHARE</span><h2>Clipboard</h2></div><span className="live-dot"><i /> Live</span></div>
+            <textarea value={clipboard} onChange={(event) => sendClipboard(event.target.value)} />
+            <small>Syncs instantly with this room</small>
+          </div>
+        </section>
+      )}
+
+      {progress && <TransferProgress progress={progress} togglePause={toggleTransferPause} cancel={cancelTransfer} />}
+      <div id="history-section"><History transfers={transfers} download={downloadTransfer} /></div>
+      <AirShareFooter />
     </main>
   </div>
+}
+
+function ScreenShareBanner({ onStart }) {
+  return (
+    <section className="screenshare-promo-card">
+      <div className="promo-text">
+        <span className="eyebrow">REAL-TIME P2P SCREEN SHARE</span>
+        <h2>Screen Sharing</h2>
+        <p>Share your screen, an application window, or browser tab with the connected device in real-time. Both users can also share screens simultaneously.</p>
+      </div>
+      <div className="promo-actions">
+        <button className="start-screenshare-main-btn" onClick={onStart}>
+          <Icon name="screen" size={18} />
+          <span>Start Screen Share</span>
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function ScreenShareStage({ localStream, remoteStream, onStartLocal, onStopLocal }) {
+  const isBothSharing = Boolean(localStream && remoteStream)
+
+  return (
+    <section className="screenshare-stage">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">P2P SCREEN SHARE</span>
+          <h2>{isBothSharing ? 'Dual Screen Share (Both Active)' : remoteStream ? 'Remote Screen Broadcast' : 'Your Screen Broadcast'}</h2>
+        </div>
+        <div className="screenshare-status-badges">
+          {remoteStream && <span className="live-broadcast-pill"><i /> Remote Live</span>}
+          {localStream && <span className="live-broadcast-pill local"><i /> You Sharing</span>}
+        </div>
+      </div>
+
+      <div className={`screenshare-viewport-grid ${isBothSharing ? 'dual-view' : 'single-view'}`}>
+        {remoteStream && (
+          <RemoteScreenCard stream={remoteStream} isBothSharing={isBothSharing} />
+        )}
+        {localStream && (
+          <LocalScreenCard stream={localStream} onStop={onStopLocal} isBothSharing={isBothSharing} />
+        )}
+      </div>
+
+      {!localStream && remoteStream && (
+        <div className="screenshare-dual-prompt">
+          <span>Both users can share screens simultaneously! Want to share your screen too?</span>
+          <button className="outline-button" onClick={onStartLocal}>
+            <Icon name="screen" size={16} /> Share My Screen
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function RemoteScreenCard({ stream, isBothSharing }) {
+  const videoRef = useRef(null)
+  const containerRef = useRef(null)
+  const [muted, setMuted] = useState(false)
+  const [hasAudio, setHasAudio] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream
+      setHasAudio(stream.getAudioTracks().length > 0)
+      const playPromise = videoRef.current.play()
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          if (videoRef.current) {
+            videoRef.current.muted = true
+            setMuted(true)
+            videoRef.current.play().catch(() => {})
+          }
+        })
+      }
+    }
+  }, [stream])
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !videoRef.current.muted
+      setMuted(videoRef.current.muted)
+    }
+  }
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen?.().catch(() => {})
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen?.().catch(() => {})
+      setIsFullscreen(false)
+    }
+  }
+
+  const togglePip = async () => {
+    if (!videoRef.current) return
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture()
+      } else if (document.pictureInPictureEnabled) {
+        await videoRef.current.requestPictureInPicture()
+      }
+    } catch (e) {
+      console.warn('PiP error:', e)
+    }
+  }
+
+  return (
+    <div className={`screenshare-card remote-card ${isBothSharing ? 'dual' : 'solo'}`} ref={containerRef}>
+      <div className="card-topbar">
+        <div className="card-title">
+          <span className="live-tag"><i /> Remote Screen</span>
+          {hasAudio && <span className="audio-tag">Audio</span>}
+        </div>
+        <div className="card-controls">
+          {hasAudio && (
+            <button className="control-btn" onClick={toggleMute} title={muted ? 'Unmute' : 'Mute'}>
+              <Icon name={muted ? 'volumeX' : 'volume'} size={16} />
+            </button>
+          )}
+          {document.pictureInPictureEnabled && (
+            <button className="control-btn" onClick={togglePip} title="Picture-in-Picture">
+              <Icon name="pip" size={16} />
+            </button>
+          )}
+          <button className="control-btn" onClick={toggleFullscreen} title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}>
+            <Icon name="maximize" size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="video-viewport">
+        <video ref={videoRef} autoPlay playsInline muted={muted} />
+      </div>
+    </div>
+  )
+}
+
+function LocalScreenCard({ stream, onStop, isBothSharing }) {
+  const videoRef = useRef(null)
+  const containerRef = useRef(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream
+    }
+  }, [stream])
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen?.().catch(() => {})
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen?.().catch(() => {})
+      setIsFullscreen(false)
+    }
+  }
+
+  return (
+    <div className={`screenshare-card local-card ${isBothSharing ? 'dual' : 'solo'}`} ref={containerRef}>
+      <div className="card-topbar">
+        <div className="card-title">
+          <span className="live-tag local"><i /> Your Screen (Sharing)</span>
+        </div>
+        <div className="card-controls">
+          <button className="control-btn" onClick={toggleFullscreen} title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}>
+            <Icon name="maximize" size={16} />
+          </button>
+          <button className="stop-btn" onClick={onStop} title="Stop sharing screen">
+            <Icon name="screenOff" size={15} /> <span>Stop Sharing</span>
+          </button>
+        </div>
+      </div>
+      <div className="video-viewport">
+        <video ref={videoRef} autoPlay playsInline muted />
+      </div>
+    </div>
+  )
 }
 
 function TransferProfiles({ profile, setProfile }) { return <div className="transfer-profiles"><div><span className="eyebrow">TRANSFER ENGINE</span><strong>Smart transfer profile</strong></div><div className="profile-options" role="group" aria-label="Transfer profile">{[['eco', 'Eco'], ['balanced', 'Balanced'], ['turbo', 'Turbo']].map(([value, label]) => <button key={value} className={profile === value ? 'profile-option active' : 'profile-option'} onClick={() => setProfile(value)}>{label}</button>)}</div><small>{profile === 'eco' ? 'Smaller packets for unstable connections' : profile === 'turbo' ? 'Larger packets for fast, reliable networks' : 'Optimized for most networks'}</small></div> }
