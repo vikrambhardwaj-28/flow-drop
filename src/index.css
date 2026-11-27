@@ -38,51 +38,54 @@ button {
   --line: rgba(255, 255, 255, 0.14);
 
   --glass-blur: 32px;
-  --glass-sat: 165%;
+  --glass-sat: 175%;
   --glass-bright: 1.02;
   --glass-contrast: 1.04;
 
-  /* Ultra-clean crystal-clear interior (lets dark backdrop pass through cleanly) */
-  --glass-bg: rgba(255, 255, 255, 0.032);
-  --glass-bg-well: rgba(6, 8, 16, 0.54);
+  /* Balanced smoked crystal glass interior */
+  --glass-bg: rgba(12, 15, 25, 0.54);
+  --glass-bg-well: rgba(5, 7, 14, 0.64);
   --glass-border: rgba(255, 255, 255, 0.14);
 
-  /* Signature iOS 26 dual-corner specular rim: bright top-left & bottom-right */
+  /* Refined dual-corner specular rim (clean, not harsh) */
   --glass-rim: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.78) 0%,
-    rgba(255, 255, 255, 0.24) 20%,
+    rgba(255, 255, 255, 0.56) 0%,
+    rgba(255, 255, 255, 0.20) 20%,
     rgba(255, 255, 255, 0.04) 44%,
     rgba(255, 255, 255, 0.04) 56%,
-    rgba(255, 255, 255, 0.22) 80%,
-    rgba(255, 255, 255, 0.62) 100%
+    rgba(255, 255, 255, 0.18) 80%,
+    rgba(255, 255, 255, 0.44) 100%
   );
 
-  /* Soft curved lens depth without milky white haze */
+  /* Subtle, smooth studio glass sheen (no harsh glossy stripe) */
   --glass-gloss:
-    radial-gradient(125% 55% at 50% -18%, rgba(255, 255, 255, 0.10) 0%, transparent 56%),
-    radial-gradient(95% 45% at 50% 118%, rgba(255, 255, 255, 0.06) 0%, transparent 56%),
-    linear-gradient(155deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.005) 45%, rgba(255, 255, 255, 0.03) 100%);
+    radial-gradient(125% 52% at 50% -14%, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 48%, transparent 72%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.01) 42%, rgba(0, 0, 0, 0.24) 100%);
 
-  /* Thick curved lens edge bleed + 3D elevation shadow */
+  /* Balanced 3D glass depth + soft specular lip */
   --glass-shadow:
     0 28px 64px -14px rgba(0, 0, 0, 0.88),
     0 12px 28px -6px rgba(0, 0, 0, 0.68),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.34),
-    inset 0 -1.5px 3px rgba(255, 255, 255, 0.16),
-    inset 0 0 22px rgba(255, 255, 255, 0.04),
-    inset 0 10px 24px -12px rgba(255, 255, 255, 0.10),
-    inset 0 -12px 26px -12px rgba(0, 0, 0, 0.55);
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.34),
+    inset 0 6px 14px -8px rgba(255, 255, 255, 0.10),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.12),
+    inset 0 -10px 22px -10px rgba(0, 0, 0, 0.62);
 
-  /* Sleek dark translucent glass pills/buttons (matching reference Edit & action circles) */
-  --glass-pill-bg: rgba(18, 19, 32, 0.64);
-  --glass-pill-hover: rgba(30, 32, 52, 0.78);
+  /* Refined translucent capsule buttons */
+  --glass-pill-bg: rgba(18, 21, 35, 0.66);
+  --glass-pill-hover: rgba(28, 33, 54, 0.80);
   --glass-pill-border: rgba(255, 255, 255, 0.22);
-  --glass-pill-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, transparent 52%);
+  --glass-pill-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.02) 52%,
+    transparent 100%
+  );
   --glass-pill-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.56),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.42);
+    0 10px 22px rgba(0, 0, 0, 0.56),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.44);
 
   --spring: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -379,11 +382,25 @@ button {
   letter-spacing: -0.02em;
 }
 
+.app-shell .brand span,
+.app-shell .footer-brand strong {
+  background: linear-gradient(108deg, #ffffff 18%, #b9d4ff 62%, #82eadc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
 .app-shell .topbar h1 {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
   font-weight: 600;
   letter-spacing: -0.028em;
   line-height: 1.1;
+  background: linear-gradient(106deg, #ffffff 12%, #c9dcff 52%, #7ee9dc 94%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 .app-shell :is(.section-heading h2, .join-card h2, .screenshare-promo-card h2) {
@@ -391,6 +408,27 @@ button {
   font-weight: 600;
   letter-spacing: -0.022em;
   line-height: 1.15;
+  background: linear-gradient(108deg, #ffffff 15%, #c5d5ff 64%, #9ae8e0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.app-shell .join-card h2 {
+  background: linear-gradient(108deg, #ffffff 14%, #cdc7ff 56%, #88c2ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.app-shell .clipboard-panel .section-heading h2 {
+  background: linear-gradient(108deg, #ffffff 14%, #9ff2e2 58%, #7ec8ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 .app-shell .room-copy h2 {
@@ -398,24 +436,68 @@ button {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.08em;
+  background: linear-gradient(105deg, #ffffff 10%, #a8c9ff 54%, #7be8da 98%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 16px rgba(122, 182, 255, 0.22));
 }
 
 .app-shell .join-controls input {
   font-family: 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: #e4edff;
+}
+
+.app-shell .join-controls input::placeholder {
+  color: rgba(176, 194, 232, 0.45);
 }
 
 .app-shell .eyebrow {
-  color: rgba(218, 228, 250, 0.78);
+  color: #8cb6ff;
   font-weight: 600;
   letter-spacing: 0.09em;
 }
 
+.app-shell .room-copy .eyebrow {
+  color: #79e5d6;
+}
+
+.app-shell .join-card .eyebrow {
+  color: #b4b0ff;
+}
+
+.app-shell .clipboard-panel .eyebrow {
+  color: #72e6cf;
+}
+
+.app-shell .history-section .eyebrow {
+  color: #93b8ff;
+}
+
+.app-shell .progress-top b {
+  color: #84eadc;
+}
+
 .app-shell .table-head {
-  color: rgba(218, 228, 250, 0.76);
+  color: rgba(178, 198, 240, 0.82);
   font-weight: 600;
   letter-spacing: 0.08em;
+}
+
+.app-shell .footer-credit {
+  background: linear-gradient(108deg, #d8e4ff 10%, #86e6da 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  font-weight: 600;
+}
+
+.app-shell .airshare-footer a:hover {
+  color: #a4c8ff;
 }
 
 .app-shell :is(.nav-item, .outline-button, .dark-button, .listen-button, .start-screenshare-main-btn, .transfer-control, .history-download, .profile-option) {
@@ -425,18 +507,18 @@ button {
 
 .app-shell .pulse-ring {
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.38);
   border-radius: 50%;
   background:
-    radial-gradient(120% 60% at 30% 10%, rgba(255, 255, 255, 0.16), transparent 56%),
-    rgba(255, 255, 255, 0.04);
+    radial-gradient(120% 60% at 30% 10%, rgba(255, 255, 255, 0.18), transparent 56%),
+    rgba(255, 255, 255, 0.05);
   box-shadow:
-    0 14px 32px rgba(0, 0, 0, 0.62),
-    inset 0 2px 2px rgba(255, 255, 255, 0.45),
-    inset 0 -2px 4px rgba(255, 255, 255, 0.20),
+    0 14px 32px rgba(0, 0, 0, 0.64),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.46),
+    inset 0 -1.5px 3px rgba(255, 255, 255, 0.18),
     inset 0 0 14px rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(22px) saturate(170%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  backdrop-filter: blur(22px) saturate(175%);
+  -webkit-backdrop-filter: blur(22px) saturate(175%);
 }
 
 .app-shell .pulse-ring img {
@@ -537,15 +619,15 @@ button {
 
 .app-shell .dark-button,
 .app-shell .start-screenshare-main-btn {
-  border: 1px solid rgba(255, 255, 255, 0.44);
+  border: 1px solid rgba(255, 255, 255, 0.40);
   background:
-    radial-gradient(120% 70% at 50% -10%, rgba(255, 255, 255, 0.34), transparent 56%),
-    linear-gradient(135deg, rgba(96, 122, 255, 0.88), rgba(54, 178, 255, 0.82));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.02) 52%, transparent 100%),
+    linear-gradient(135deg, rgba(92, 118, 255, 0.90), rgba(50, 174, 248, 0.84));
   color: #fff;
   box-shadow:
-    0 14px 32px rgba(48, 102, 240, 0.38),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.65),
-    inset 0 -2px 3px rgba(0, 0, 0, 0.24);
+    0 14px 30px rgba(48, 102, 238, 0.38),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.52),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(20px) saturate(190%);
   -webkit-backdrop-filter: blur(20px) saturate(190%);
 }
