@@ -51,7 +51,6 @@ function App() {
   const [roomCode, setRoomCode] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [connected, setConnected] = useState(false)
-  const [theme, setTheme] = useState(() => localStorage.getItem('air-share-pro-theme') || 'dark')
   const [soundWave, setSoundWave] = useState(false)
   const [listening, setListening] = useState(false)
   const [status, setStatus] = useState('Creating a private room...')
@@ -665,15 +664,13 @@ function App() {
     setStatus('Disconnected')
   }
 
-  const toggleTheme = () => setTheme((value) => { const next = value === 'dark' ? 'light' : 'dark'; localStorage.setItem('air-share-pro-theme', next); return next })
-
   const scrollTo = (id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
   }
 
   const isMobile = checkIsMobile()
 
-  return <div className={`app-shell theme-${theme}`}>
+  return <div className="app-shell theme-dark">
     <aside className="sidebar">
       <div className="brand"><img className="brand-logo" src="/air-share-logo.svg" alt="Air Share Pro logo" /><span>Air Share Pro</span></div>
       <nav>
@@ -705,7 +702,6 @@ function App() {
               <button className="outline-button disconnect-button" onClick={disconnect}>Disconnect</button>
             </>
           )}
-          <button className="theme-toggle" onClick={toggleTheme} aria-label="Change color theme"><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
         </div>
       </header>
 
