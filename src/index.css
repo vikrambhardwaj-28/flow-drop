@@ -369,12 +369,58 @@ button {
    Typography, Liquid Glass Lens Avatar, QR Frame & Badges
    ========================================================================== */
 
+.app-shell,
+.app-shell :is(h1, h2, h3, h4, p, span, strong, small, button, input, textarea, a, div) {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+}
+
+.app-shell .brand {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.app-shell .topbar h1 {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.028em;
+  line-height: 1.1;
+}
+
+.app-shell :is(.section-heading h2, .join-card h2, .screenshare-promo-card h2) {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
+}
+
+.app-shell .room-copy h2 {
+  font-family: 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.app-shell .join-controls input {
+  font-family: 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .app-shell .eyebrow {
   color: rgba(218, 228, 250, 0.78);
+  font-weight: 600;
+  letter-spacing: 0.09em;
 }
 
 .app-shell .table-head {
   color: rgba(218, 228, 250, 0.76);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.app-shell :is(.nav-item, .outline-button, .dark-button, .listen-button, .start-screenshare-main-btn, .transfer-control, .history-download, .profile-option) {
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .app-shell .pulse-ring {
